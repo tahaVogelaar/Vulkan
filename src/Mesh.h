@@ -52,8 +52,9 @@ struct Object {
 class IndirectDraw {
   public:
   IndirectDraw() = default;
-  IndirectDraw(lve::LveDevice &device, const std::vector<std::string>& files);
+  IndirectDraw(lve::LveDevice &device) : lveDevice(device) {}
 
+  void createDrawBuffers(const std::vector<std::string>& files);
   void render(VkCommandBuffer commandBuffer);
 
 private:
@@ -61,9 +62,9 @@ private:
   std::vector<Object> objects;
 
   std::unique_ptr<lve::LveBuffer> vertexBuffer;
-  uint32_t vertexCount;
+  uint32_t vertexCount = 0;
   std::unique_ptr<lve::LveBuffer> indexBuffer;
-  uint32_t indexCount;
+  uint32_t indexCount = 0;
 
   std::vector<Vertex> vertices;
   std::vector<uint32_t> indices;

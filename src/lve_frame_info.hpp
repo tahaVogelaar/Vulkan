@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lve_camera.hpp"
+#include "keyboard_movement_controller.hpp"
 
 // lib
 #include <vulkan/vulkan.h>
@@ -10,7 +10,7 @@ struct FrameInfo {
   int frameIndex;
   float frameTime;
   VkCommandBuffer commandBuffer;
-  LveCamera &camera;
+  Camera &camera;
   VkDescriptorSet globalDescriptorSet;
 };
 }  // namespace lve

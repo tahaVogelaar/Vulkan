@@ -14,7 +14,7 @@
 #include <unordered_map>
 
 
-IndirectDraw::IndirectDraw(lve::LveDevice &device, const std::vector<std::string>& files) : lveDevice(device) {
+void IndirectDraw::createDrawBuffers(const std::vector<std::string>& files) {
   builder.resize(files.size());
   int verticesCount = 0;
   uint32_t indicesCount = 0;
@@ -37,7 +37,7 @@ IndirectDraw::IndirectDraw(lve::LveDevice &device, const std::vector<std::string
       verticesCount,
       0});
 
-    verticesCount += b.vertices.size();
+    verticesCount += static_cast<int>(b.vertices.size());
     indicesCount += b.indices.size();
   }
 
@@ -49,7 +49,7 @@ IndirectDraw::IndirectDraw(lve::LveDevice &device, const std::vector<std::string
 
 
 void IndirectDraw::render(VkCommandBuffer commandBuffer) {
-  vkCmdDrawIndexedIndirect(commandBuffer, drawCommandsBuffer->getBuffer(), 2, 1, sizeof(VkDrawIndexedIndirectCommand));
+  vkCmdDrawIndexedIndirect(commandBuffer, drawCommandsBuffer->getBuffer(), 0, static_cast<uint32_t>(drawCommands.size()), sizeof(VkDrawIndexedIndirectCommand));
 }
 
 void IndirectDraw::createDrawCommand() {

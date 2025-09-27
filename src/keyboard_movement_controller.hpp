@@ -1,10 +1,18 @@
 #pragma once
 
-#include "lve_game_object.hpp"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include "lve_window.hpp"
 
+struct GlobalUbo {
+  glm::mat4 view;
+  glm::mat4 proj;
+  glm::vec3 rotation;
+  glm::vec3 camPos;
+};
+
 namespace lve {
-class KeyboardMovementController {
+class Camera {
 public:
   struct KeyMappings {
     int moveLeft = GLFW_KEY_A;
@@ -13,16 +21,14 @@ public:
     int moveBackward = GLFW_KEY_S;
     int moveUp = GLFW_KEY_SPACE;
     int moveDown = GLFW_KEY_LEFT_CONTROL;
-    int lookLeft = GLFW_KEY_LEFT;
-    int lookRight = GLFW_KEY_RIGHT;
-    int lookUp = GLFW_KEY_UP;
-    int lookDown = GLFW_KEY_DOWN;
   };
 
-  void moveInPlaneXZ(GLFWwindow* window, float dt, LveGameObject& gameObject);
+  void update(GLFWwindow* window, float dt, GlobalUbo& ubo);
+
 
   KeyMappings keys{};
   float moveSpeed{3.f};
   float lookSpeed{1.5f};
+  float fov, aspect, nearPlane, farPlane;
 };
 }  // namespace lve

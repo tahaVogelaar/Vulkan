@@ -2,9 +2,10 @@
 
 #include "lve_descriptors.hpp"
 #include "lve_device.hpp"
-#include "lve_game_object.hpp"
 #include "lve_renderer.hpp"
 #include "lve_window.hpp"
+#include "Mesh.h"
+#include "keyboard_movement_controller.hpp"
 
 // std
 #include <memory>
@@ -30,10 +31,12 @@ private:
   LveWindow lveWindow{WIDTH, HEIGHT, "Vulkan Tutorial"};
   LveDevice lveDevice{lveWindow};
   LveRenderer lveRenderer{lveWindow, lveDevice};
+  Camera camera;
+
+  IndirectDraw indirectDraw{lveDevice};
 
   // note: order of declarations matters
-  std::unique_ptr<LveDescriptorPool> globalPool{};
-  std::vector<LveGameObject> gameObjects;
+  std::unique_ptr<LveDescriptorPool> globalPool{}, ssobPool;
   double lastTime = 0, currTime = 0, lastUpdate1 = 0, deltaTime = 0;
 };
 } // namespace lve

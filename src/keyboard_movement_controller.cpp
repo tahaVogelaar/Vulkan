@@ -1,62 +1,75 @@
 #include "keyboard_movement_controller.hpp"
+#include <glm/gtx/rotate_vector.hpp>
+#include <glm/gtc/constants.hpp>
 
 // std
 #include <iostream>
 #include <limits>
 
 namespace lve {
+	void Camera::update(GLFWwindow *window, float dt, GlobalUbo &ubo)
+	{
+		glm::vec3 rotationRad = glm::radians(ubo.rotation);
 
-void KeyboardMovementController::moveInPlaneXZ(
-    GLFWwindow* window, float dt, LveGameObject& gameObject)
-{
-    glm::vec3 rotate{0};
+		// Calculate forward, right, and up directions from rotation
+		glm::vec3 forward = glm::vec3(
+			cos(rotationRad.y) * cos(rotationRad.x),
+			sin(rotationRad.x),
+			sin(rotationRad.y) * cos(rotationRad.x)
+		);
+		forward = glm::normalize(forward);
 
-  if (glfwGetMouseButton(window, 1)) {
-    int xSize, ySize;
-    double xpos, ypos;
-
-    glfwGetWindowSize(window, &xSize, &ySize);
-    glfwGetCursorPos(window, &xpos, &ypos);
-    glfwSetCursorPos(window, xSize / 2, ySize / 2);
-    double chanceX = xpos - xSize / 2;
-    double chanceY = ypos - ySize / 2;
-
-    rotate.y += chanceX * 10;
-    rotate.x += -chanceY * 10;
-
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
-
-  }
-  else
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.f, 1.f, 0.f)));
+		glm::vec3 up = glm::normalize(glm::cross(right, forward));
 
 
+		if (glfwGetMouseButton(window, 1))
+		{
+			int xSize, ySize;
+			double xpos, ypos;
+
+			glfwGetWindowSize(window, &xSize, &ySize);
+			glfwGetCursorPos(window, &xpos, &ypos);
+			glfwSetCursorPos(window, xSize / 2, ySize / 2);
+			double chanceX = xpos - xSize / 2;
+			double chanceY = ypos - ySize / 2;
+
+			ubo.rotation.y += chanceX * 10;
+			ubo.rotation.x += -chanceY * 10;
+
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+		} else
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+		// clamp camera rotation
+		if (ubo.rotation.x > 89.f) ubo.rotation.x = 89.f;
+		if (ubo.rotation.x < -89.f) ubo.rotation.x = -89.f;
 
 
+		if (glfwGetKey(window, keys.moveForward) == GLFW_PRESS) {
+			ubo.camPos += forward * moveSpeed * dt;
+		}
+		if (glfwGetKey(window, keys.moveBackward) == GLFW_PRESS) {
+			ubo.camPos -= forward * moveSpeed * dt;
+		}
+		if (glfwGetKey(window, keys.moveLeft) == GLFW_PRESS) {
+			ubo.camPos -= right * moveSpeed * dt;
+		}
+		if (glfwGetKey(window, keys.moveRight) == GLFW_PRESS) {
+			ubo.camPos += right * moveSpeed * dt;
+		}
+		if (glfwGetKey(window, keys.moveUp) == GLFW_PRESS) {
+			ubo.camPos += up * moveSpeed * dt;
+		}
+		if (glfwGetKey(window, keys.moveDown) == GLFW_PRESS) {
+			ubo.camPos -= up * moveSpeed * dt;
+		}
 
-  if (glm::dot(rotate, rotate) > std::numeric_limits<float>::epsilon()) {
-    gameObject.transform.rotation += lookSpeed * dt * glm::normalize(rotate);
-  }
+		glm::mat4 rot = glm::mat4(1.0f);
+		rot = glm::rotate(rot, glm::radians(ubo.rotation.y), glm::vec3(0.f, 1.f, 0.f)); // yaw
+		rot = glm::rotate(rot, glm::radians(ubo.rotation.x), glm::vec3(1.f, 0.f, 0.f)); // pitch
 
-  // limit pitch values between about +/- 85ish degrees
-  gameObject.transform.rotation.x = glm::clamp(gameObject.transform.rotation.x, -1.5f, 1.5f);
-  gameObject.transform.rotation.y = glm::mod(gameObject.transform.rotation.y, glm::two_pi<float>());
-
-  float yaw = gameObject.transform.rotation.y;
-  const glm::vec3 forwardDir{sin(yaw), 0.f, cos(yaw)};
-  const glm::vec3 rightDir{forwardDir.z, 0.f, -forwardDir.x};
-  const glm::vec3 upDir{0.f, -1.f, 0.f};
-
-  glm::vec3 moveDir{0.f};
-  if (glfwGetKey(window, keys.moveForward) == GLFW_PRESS) moveDir += forwardDir;
-  if (glfwGetKey(window, keys.moveBackward) == GLFW_PRESS) moveDir -= forwardDir;
-  if (glfwGetKey(window, keys.moveRight) == GLFW_PRESS) moveDir += rightDir;
-  if (glfwGetKey(window, keys.moveLeft) == GLFW_PRESS) moveDir -= rightDir;
-  if (glfwGetKey(window, keys.moveUp) == GLFW_PRESS) moveDir += upDir;
-  if (glfwGetKey(window, keys.moveDown) == GLFW_PRESS) moveDir -= upDir;
-
-  if (glm::dot(moveDir, moveDir) > std::numeric_limits<float>::epsilon()) {
-    gameObject.transform.translation += moveSpeed * dt * glm::normalize(moveDir);
-  }
-}
-}  // namespace lve
+		glm::vec3 direction = glm::normalize(rot * glm::vec4(0.f, 0.f, -1.f, 0.f));
+		ubo.view = glm::lookAt(ubo.camPos, ubo.camPos + direction, glm::vec3(0.f, 1.f, 0.f));
+	}
+} // namespace lve

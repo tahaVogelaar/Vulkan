@@ -1,8 +1,6 @@
 #include "first_app.hpp"
 
-#include "keyboard_movement_controller.hpp"
 #include "lve_buffer.hpp"
-#include "lve_camera.hpp"
 #include "simple_render_system.hpp"
 
 // libs
@@ -20,16 +18,14 @@
 
 namespace lve {
 
-struct GlobalUbo {
-  glm::mat4 projectionView{1.f};
-  glm::vec3 lightDirection = glm::normalize(glm::vec3{1.f, -3.f, -1.f});
-};
-
 FirstApp::FirstApp() {
   globalPool = LveDescriptorPool::Builder(lveDevice)
                    .setMaxSets(LveSwapChain::MAX_FRAMES_IN_FLIGHT)
                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                                 LveSwapChain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                      LveSwapChain::MAX_FRAMES_IN_FLIGHT)
+
                    .build();
   loadGameObjects();
 }
@@ -49,6 +45,8 @@ void FirstApp::run() {
   auto globalSetLayout = LveDescriptorSetLayout::Builder(lveDevice)
                              .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                                          VK_SHADER_STAGE_VERTEX_BIT)
+                              .addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                VK_SHADER_STAGE_VERTEX_BIT)
                              .build();
 
   std::vector<VkDescriptorSet> globalDescriptorSets(
@@ -63,10 +61,6 @@ void FirstApp::run() {
   SimpleRenderSystem simpleRenderSystem{
       lveDevice, lveRenderer.getSwapChainRenderPass(),
       globalSetLayout->getDescriptorSetLayout()};
-  LveCamera camera{};
-
-  auto viewerObject = LveGameObject::createGameObject();
-  KeyboardMovementController cameraController{};
 
   auto currentTime = std::chrono::high_resolution_clock::now();
 
@@ -85,13 +79,7 @@ void FirstApp::run() {
             .count();
     currentTime = newTime;
 
-    cameraController.moveInPlaneXZ(lveWindow.getGLFWwindow(), frameTime,
-                                   viewerObject);
-    camera.setViewYXZ(viewerObject.transform.translation,
-                      viewerObject.transform.rotation);
-
     float aspect = lveRenderer.getAspectRatio();
-    camera.setPerspectiveProjection(glm::radians(50.f), aspect, 0.1f, 10.f);
 
     if (auto commandBuffer = lveRenderer.beginFrame()) {
       int frameIndex = lveRenderer.getFrameIndex();
@@ -100,7 +88,7 @@ void FirstApp::run() {
 
       // update
       GlobalUbo ubo{};
-      ubo.projectionView = camera.getProjection() * camera.getView();
+      //ubo.projectionView = camera.getProjection() * camera.getView();
       uboBuffers[frameIndex]->writeToBuffer(&ubo);
       uboBuffers[frameIndex]->flush();
 
@@ -115,7 +103,9 @@ void FirstApp::run() {
 
       // render
       lveRenderer.beginSwapChainRenderPass(commandBuffer);
-      simpleRenderSystem.renderGameObjects(frameInfo, gameObjects);
+
+      //indirectDraw.render(commandBuffer);
+
       lveRenderer.endSwapChainRenderPass(commandBuffer);
       lveRenderer.endFrame();
     }
@@ -125,24 +115,10 @@ void FirstApp::run() {
 }
 
 void FirstApp::loadGameObjects() {
-  std::shared_ptr<LveModel> lveModel = LveModel::createModelFromFile(
-      lveDevice, "/home/taha/littleVulkanEngine/models/flat_vase.obj");
-  LveGameObject flatVase = LveGameObject::createGameObject();
-  flatVase.model = lveModel;
-  flatVase.transform.translation = {-.5f, .5f, 2.5f};
-  flatVase.transform.scale = {3.f, 1.5f, 3.f};
-  gameObjects.push_back(std::move(flatVase));
+  std::vector<std::string> files;
+  files.emplace_back("/home/taha/CLionProjects/untitled4/models/smooth_vase.obj");
 
-  for (int i = 0; i < 1; i++) {
-    lveModel = LveModel::createModelFromFile(
-        lveDevice, "/home/taha/littleVulkanEngine/models/smooth_vase.obj");
-    LveGameObject smoothVase = LveGameObject::createGameObject();
-    smoothVase.model = lveModel;
-    smoothVase.transform.translation = {.5f, .5f, 2.5f};
-    smoothVase.transform.scale = {3.f, 1.5f, 3.f};
-
-    gameObjects.push_back(std::move(smoothVase));
-  }
+  indirectDraw.createDrawBuffers(files);
 }
 
 } // namespace lve
