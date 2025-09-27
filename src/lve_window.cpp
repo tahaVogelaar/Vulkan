@@ -2,7 +2,7 @@
 
 // std
 #include <stdexcept>
-
+#include <iostream>
 namespace lve {
 
 LveWindow::LveWindow(int w, int h, std::string name) : width{w}, height{h}, windowName{name} {

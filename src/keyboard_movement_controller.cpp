@@ -71,5 +71,12 @@ namespace lve {
 
 		glm::vec3 direction = glm::normalize(rot * glm::vec4(0.f, 0.f, -1.f, 0.f));
 		ubo.view = glm::lookAt(ubo.camPos, ubo.camPos + direction, glm::vec3(0.f, 1.f, 0.f));
+
+		ubo.proj = glm::perspective(glm::radians(fov), aspect, nearPlane, farPlane);
+		ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+
+		// --- Combined matrix
+		ubo.projView = ubo.proj * ubo.view;
+
 	}
 } // namespace lve

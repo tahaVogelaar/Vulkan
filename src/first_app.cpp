@@ -1,7 +1,6 @@
 #include "first_app.hpp"
-
-#include "lve_buffer.hpp"
 #include "simple_render_system.hpp"
+#include "lve_buffer.hpp"
 
 // libs
 #define GLM_FORCE_RADIANS
@@ -13,112 +12,126 @@
 // std
 #include <array>
 #include <cassert>
-#include <chrono>
+#include <iomanip>
 #include <stdexcept>
 
 namespace lve {
+	FirstApp::FirstApp()
+	{
+		globalPool = LveDescriptorPool::Builder(lveDevice)
+				.setMaxSets(LveSwapChain::MAX_FRAMES_IN_FLIGHT)
+				.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+							LveSwapChain::MAX_FRAMES_IN_FLIGHT)
+				.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+							LveSwapChain::MAX_FRAMES_IN_FLIGHT)
 
-FirstApp::FirstApp() {
-  globalPool = LveDescriptorPool::Builder(lveDevice)
-                   .setMaxSets(LveSwapChain::MAX_FRAMES_IN_FLIGHT)
-                   .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                LveSwapChain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                      LveSwapChain::MAX_FRAMES_IN_FLIGHT)
+				.build();
+		loadGameObjects();
+	}
 
-                   .build();
-  loadGameObjects();
-}
+	FirstApp::~FirstApp()
+	{
+	}
 
-FirstApp::~FirstApp() {}
+	void FirstApp::run()
+	{
+		build();
 
-void FirstApp::run() {
-  std::vector<std::unique_ptr<LveBuffer>> uboBuffers(
-      LveSwapChain::MAX_FRAMES_IN_FLIGHT);
-  for (int i = 0; i < uboBuffers.size(); i++) {
-    uboBuffers[i] = std::make_unique<LveBuffer>(
-        lveDevice, sizeof(GlobalUbo), 1, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    uboBuffers[i]->map();
-  }
+		while (!lveWindow.shouldClose())
+		{
+			glfwPollEvents();
+			currTime = glfwGetTime();
+			deltaTime = currTime - lastTime;
+			lastTime = currTime;
+			aspect = lveRenderer.getAspectRatio();
 
-  auto globalSetLayout = LveDescriptorSetLayout::Builder(lveDevice)
-                             .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                         VK_SHADER_STAGE_VERTEX_BIT)
-                              .addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                VK_SHADER_STAGE_VERTEX_BIT)
-                             .build();
+			if (VkCommandBuffer commandBuffer = lveRenderer.beginFrame())
+			{
+				frameIndex = lveRenderer.getFrameIndex();
+				FrameInfo frameInfo{
+					frameIndex, static_cast<float>(deltaTime), commandBuffer, camera,
+					globalDescriptorSets[frameIndex]
+				};
 
-  std::vector<VkDescriptorSet> globalDescriptorSets(
-      LveSwapChain::MAX_FRAMES_IN_FLIGHT);
-  for (int i = 0; i < globalDescriptorSets.size(); i++) {
-    auto bufferInfo = uboBuffers[i]->descriptorInfo();
-    LveDescriptorWriter(*globalSetLayout, *globalPool)
-        .writeBuffer(0, &bufferInfo)
-        .build(globalDescriptorSets[i]);
-  }
+				update(commandBuffer, frameInfo);
+				render(commandBuffer, frameInfo);
+			}
+		}
+	}
 
-  SimpleRenderSystem simpleRenderSystem{
-      lveDevice, lveRenderer.getSwapChainRenderPass(),
-      globalSetLayout->getDescriptorSetLayout()};
+	void FirstApp::build()
+	{
+		for (int i = 0; i < LveSwapChain::MAX_FRAMES_IN_FLIGHT; i++)
+		{
+			uboBuffers[i] = std::make_unique<LveBuffer>(
+				lveDevice, sizeof(GlobalUbo), 1, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+			uboBuffers[i]->map();
 
-  auto currentTime = std::chrono::high_resolution_clock::now();
+			drawBuffers[i] = std::make_unique<LveBuffer>(
+				lveDevice, sizeof(VkDrawIndexedIndirectCommand), 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+			drawBuffers[i]->map();
+		}
 
+		auto globalSetLayout = LveDescriptorSetLayout::Builder(lveDevice)
+				.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+							VK_SHADER_STAGE_VERTEX_BIT)
+				.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+							VK_SHADER_STAGE_VERTEX_BIT)
+				.build();
 
+		for (int i = 0; i < globalDescriptorSets.size(); i++)
+		{
+			auto bufferInfo = uboBuffers[i]->descriptorInfo();
+			LveDescriptorWriter(*globalSetLayout, *globalPool)
+					.writeBuffer(0, &bufferInfo)
+					.build(globalDescriptorSets[i]);
 
-  while (!lveWindow.shouldClose()) {
-    glfwPollEvents();
-    currTime = glfwGetTime();
-    deltaTime = currTime - lastTime;
-    lastTime = currTime;
+			auto drawBufferInfo = drawBuffers[i]->descriptorInfo();
+			LveDescriptorWriter(*globalSetLayout, *globalPool)
+					.writeBuffer(1, &drawBufferInfo)
+					.build(globalDescriptorSets[i]);
+		}
 
-    auto newTime = std::chrono::high_resolution_clock::now();
-    float frameTime =
-        std::chrono::duration<float, std::chrono::seconds::period>(newTime -
-                                                                   currentTime)
-            .count();
-    currentTime = newTime;
+		SimpleRenderSystem simpleRenderSystem{
+			lveDevice, lveRenderer.getSwapChainRenderPass(),
+			globalSetLayout->getDescriptorSetLayout()
+		};
+	}
 
-    float aspect = lveRenderer.getAspectRatio();
+	void FirstApp::update(VkCommandBuffer &commandBuffer, FrameInfo& frameInfo)
+	{
+		camera.update(lveWindow.getGLFWwindow(), static_cast<float>(deltaTime), ubo);
+		uboBuffers[frameIndex]->writeToBuffer(&ubo);
+		uboBuffers[frameIndex]->flush();
 
-    if (auto commandBuffer = lveRenderer.beginFrame()) {
-      int frameIndex = lveRenderer.getFrameIndex();
-      FrameInfo frameInfo{frameIndex, frameTime, commandBuffer, camera,
-                          globalDescriptorSets[frameIndex]};
+		// update title
+		if (currTime - lastUpdate1 > 0.5)
+		{
+			double fps = 1. / (deltaTime);
+			std::ostringstream title;
+			title << "FPS: " << std::fixed << std::setprecision(1) << fps;
+			lveWindow.setName(std::to_string(fps));
+			lastUpdate1 = currTime;
+		}
+	}
 
-      // update
-      GlobalUbo ubo{};
-      //ubo.projectionView = camera.getProjection() * camera.getView();
-      uboBuffers[frameIndex]->writeToBuffer(&ubo);
-      uboBuffers[frameIndex]->flush();
+	void FirstApp::render(VkCommandBuffer &commandBuffer, FrameInfo& frameInfo)
+	{
+		lveRenderer.beginSwapChainRenderPass(commandBuffer);
 
-      // update title
-      if (currTime - lastUpdate1 > 0.5) {
-        double fps = 1. / (deltaTime);
-        std::ostringstream title;
-        title << "FPS: " << std::fixed << std::setprecision(1) << fps;
-        lveWindow.setName(std::to_string(fps));
-        lastUpdate1 = currTime;
-      }
+		indirectDraw.render(commandBuffer);
 
-      // render
-      lveRenderer.beginSwapChainRenderPass(commandBuffer);
+		lveRenderer.endSwapChainRenderPass(commandBuffer);
+		lveRenderer.endFrame();
+	}
 
-      //indirectDraw.render(commandBuffer);
+	void FirstApp::loadGameObjects()
+	{
+		std::vector<std::string> files;
+		files.emplace_back("/home/taha/CLionProjects/untitled4/models/smooth_vase.obj");
 
-      lveRenderer.endSwapChainRenderPass(commandBuffer);
-      lveRenderer.endFrame();
-    }
-  }
-
-  vkDeviceWaitIdle(lveDevice.device());
-}
-
-void FirstApp::loadGameObjects() {
-  std::vector<std::string> files;
-  files.emplace_back("/home/taha/CLionProjects/untitled4/models/smooth_vase.obj");
-
-  indirectDraw.createDrawBuffers(files);
-}
-
+		indirectDraw.createDrawBuffers(files);
+	}
 } // namespace lve

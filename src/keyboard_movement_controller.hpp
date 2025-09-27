@@ -7,6 +7,7 @@
 struct GlobalUbo {
   glm::mat4 view;
   glm::mat4 proj;
+  glm::mat4 projView;
   glm::vec3 rotation;
   glm::vec3 camPos;
 };
@@ -24,7 +25,6 @@ public:
   };
 
   void update(GLFWwindow* window, float dt, GlobalUbo& ubo);
-
 
   KeyMappings keys{};
   float moveSpeed{3.f};

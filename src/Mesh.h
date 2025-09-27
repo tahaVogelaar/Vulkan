@@ -45,8 +45,9 @@ struct TransformComponent {
 };
 
 struct Object {
-  TransformComponent transform{};
-  int id = 0;
+  glm::mat4 model;
+  uint32_t materialId;
+  // add more per-object data if needed
 };
 
 class IndirectDraw {
