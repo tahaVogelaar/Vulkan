@@ -10,24 +10,31 @@
 #include <vector>
 
 namespace lve {
-class SimpleRenderSystem {
-public:
-  SimpleRenderSystem(
-      LveDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout);
-  ~SimpleRenderSystem();
+	class SimpleRenderSystem {
+	public:
+		SimpleRenderSystem(
+			LveDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout);
 
-  SimpleRenderSystem(const SimpleRenderSystem &) = delete;
-  SimpleRenderSystem &operator=(const SimpleRenderSystem &) = delete;
+		~SimpleRenderSystem();
 
-  void renderGameObjects(FrameInfo &frameInfo, std::vector<LveGameObject> &gameObjects);
+		SimpleRenderSystem(const SimpleRenderSystem &) = delete;
 
-private:
-  void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
-  void createPipeline(VkRenderPass renderPass);
+		SimpleRenderSystem &operator=(const SimpleRenderSystem &) = delete;
 
-  LveDevice &lveDevice;
+		void renderGameObjects(FrameInfo &frameInfo);
 
-  std::unique_ptr<LvePipeline> lvePipeline;
-  VkPipelineLayout pipelineLayout;
-};
-}  // namespace lve
+		VkPipeline getPipeline() const { return lvePipeline->getPipeline(); };
+
+		VkPipelineLayout getPipelineLayout() const { return pipelineLayout; };
+
+	private:
+		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
+
+		void createPipeline(VkRenderPass renderPass);
+
+		LveDevice &lveDevice;
+
+		std::unique_ptr<LvePipeline> lvePipeline;
+		VkPipelineLayout pipelineLayout;
+	};
+} // namespace lve

@@ -56,7 +56,7 @@ void SimpleRenderSystem::createPipeline(VkRenderPass renderPass) {
 }
 
 void SimpleRenderSystem::renderGameObjects(
-    FrameInfo& frameInfo, std::vector<LveGameObject>& gameObjects) {
+    FrameInfo& frameInfo) {
   lvePipeline->bind(frameInfo.commandBuffer);
 
   vkCmdBindDescriptorSets(

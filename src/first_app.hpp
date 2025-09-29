@@ -11,6 +11,7 @@
 // std
 #include <memory>
 #include <vector>
+#include "simple_render_system.hpp"
 
 namespace lve {
 
@@ -36,6 +37,7 @@ private:
   LveWindow lveWindow{WIDTH, HEIGHT, "Vulkan Tutorial"};
   LveDevice lveDevice{lveWindow};
   LveRenderer lveRenderer{lveWindow, lveDevice};
+  std::unique_ptr<SimpleRenderSystem> simpleRenderSystem;
   Camera camera;
   GlobalUbo ubo;
 
@@ -47,7 +49,7 @@ private:
   std::vector<std::unique_ptr<LveBuffer>> uboBuffers{LveSwapChain::MAX_FRAMES_IN_FLIGHT};
   std::vector<std::unique_ptr<LveBuffer> > drawBuffers{LveSwapChain::MAX_FRAMES_IN_FLIGHT};
 
-  double lastTime = 0, currTime = 0, lastUpdate1 = 0, deltaTime = 0;
+  double lastTime = 0, currentTime = 0, lastUpdate1 = 0, deltaTime = 0;
   float aspect;
   int frameIndex = 0;
 };

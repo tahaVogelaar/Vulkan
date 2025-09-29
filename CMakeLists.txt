@@ -5,12 +5,13 @@ set(CMAKE_CXX_STANDARD 20)
 
 # Collect all sources for the library (excluding main.cpp)
 file(GLOB_RECURSE MYLIB_SOURCES src/*.cpp)
-list(REMOVE_ITEM MYLIB_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
 
 # Create a static library from all other cpp files
 add_library(mylib STATIC ${MYLIB_SOURCES}
         src/Mesh.cpp
-        src/Mesh.h)
+        src/Mesh.h
+        src/lve_camera.cpp
+        src/lve_camera.hpp)
 
 # Include headers
 target_include_directories(mylib PUBLIC src)

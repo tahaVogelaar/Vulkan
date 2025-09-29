@@ -8,6 +8,7 @@
 
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 struct Vertex {
   glm::vec3 position{};
@@ -27,6 +28,7 @@ struct Vertex {
 struct Builder {
   std::vector<Vertex> vertices{};
   std::vector<uint32_t> indices{};
+  uint32_t id = 0;
 
   void loadModel(const std::string &filepath);
 };
@@ -47,7 +49,6 @@ struct TransformComponent {
 struct Object {
   glm::mat4 model;
   uint32_t materialId;
-  // add more per-object data if needed
 };
 
 class IndirectDraw {
@@ -55,7 +56,8 @@ class IndirectDraw {
   IndirectDraw() = default;
   IndirectDraw(lve::LveDevice &device) : lveDevice(device) {}
 
-  void createDrawBuffers(const std::vector<std::string>& files);
+  void createMeshes(const std::vector<std::string>& files);
+  void createObjects(std::vector<Object> obj);
   void render(VkCommandBuffer commandBuffer);
 
 private:

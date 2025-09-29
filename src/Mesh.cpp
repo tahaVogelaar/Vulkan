@@ -11,11 +11,13 @@
 // std
 #include <cassert>
 #include <cstring>
+#include <iostream>
 #include <unordered_map>
 
 
-void IndirectDraw::createDrawBuffers(const std::vector<std::string> &files)
+void IndirectDraw::createMeshes(const std::vector<std::string> &files)
 {
+	builder.clear();
 	builder.reserve(files.size());
 	int verticesCount = 0;
 	uint32_t indicesCount = 0;
@@ -32,23 +34,45 @@ void IndirectDraw::createDrawBuffers(const std::vector<std::string> &files)
 		for (auto i: b.indices)
 			indices.push_back(i);
 
-		drawCommands.push_back(VkDrawIndexedIndirectCommand{
-			static_cast<uint32_t>(b.indices.size()),
-			1,
-			indicesCount,
-			verticesCount,
-			0
-		});
-
 		verticesCount += static_cast<int>(b.vertices.size());
 		indicesCount += b.indices.size();
 	}
 
 	createVertexBuffers(vertices);
 	createIndexBuffers(indices);
-	createDrawCommand();
 }
 
+void IndirectDraw::createObjects(std::vector<Object> obj)
+{
+	drawCommands.clear();
+	std::sort(obj.begin(), obj.end(),
+	              [](const Object& a, const Object& b)
+	              { return a.materialId < b.materialId; });
+
+	std::unordered_map<uint32_t, uint32_t> count;
+	for (const auto& o: obj)
+		count[o.materialId]++;
+
+	uint32_t firstIndex = 0;
+	int32_t vertexOffset = 0;
+
+	for (auto& b : builder) {
+		VkDrawIndexedIndirectCommand cmd{};
+		cmd.indexCount = static_cast<uint32_t>(b.indices.size());
+		cmd.instanceCount = count[b.id];
+		cmd.firstIndex = firstIndex;
+		cmd.vertexOffset = vertexOffset;
+		cmd.firstInstance = 0;
+
+		drawCommands.push_back(cmd);
+
+		// advance offsets
+		firstIndex   += static_cast<uint32_t>(b.indices.size());
+		vertexOffset += static_cast<int32_t>(b.vertices.size());
+	}
+
+	createDrawCommand();
+}
 
 void IndirectDraw::render(VkCommandBuffer commandBuffer)
 {
