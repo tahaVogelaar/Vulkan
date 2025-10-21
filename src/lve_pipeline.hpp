@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "Mesh.h"
+
 namespace lve {
 	struct PipelineConfigInfo {
 		PipelineConfigInfo(const PipelineConfigInfo &) = delete;
@@ -35,17 +37,19 @@ namespace lve {
 			LveDevice &device,
 			const std::string &vertFilepath,
 			const std::string &fragFilepath,
-			const PipelineConfigInfo &configInfo);
+			const PipelineConfigInfo &configInfo,
+			std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)() = IndirectDraw::getBindingDescriptions,
+			std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)() = IndirectDraw::getAttributeDescriptions);
 
 		~LvePipeline();
 
 		LvePipeline(const LvePipeline &) = delete;
-
 		LvePipeline &operator=(const LvePipeline &) = delete;
 
 		void bind(VkCommandBuffer commandBuffer);
 
-		static void defaultPipelineConfigInfo(PipelineConfigInfo &configInfo);
+		static void defaultPipelineConfigInfo(PipelineConfigInfo &configInfo, VkExtent2D extent = VkExtent2D{0, 0});
+		static void shadowPipelineConfigInfo(PipelineConfigInfo &configInfo, VkExtent2D extent = VkExtent2D{0, 0});
 
 		VkPipeline getPipeline() const {return graphicsPipeline; };
 
@@ -60,7 +64,9 @@ namespace lve {
 		void createGraphicsPipeline(
 			const std::string &vertFilepath,
 			const std::string &fragFilepath,
-			const PipelineConfigInfo &configInfo);
+			const PipelineConfigInfo &configInfo,
+			std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)(),
+			std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)());
 
 		void createShaderModule(const std::vector<uint32_t> &code, VkShaderModule *shaderModule);
 

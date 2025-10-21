@@ -13,18 +13,18 @@
 namespace lve {
 	void Camera::update(GLFWwindow *window, float dt, GlobalUbo &ubo)
 	{
-		glm::vec3 position = ubo.camPos, rotation = ubo.rotation;;
+		glm::vec3 position = ubo.camPos, rotation = ubo.rotation;
 
 		if (glfwGetMouseButton(window, 1)) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 			double dx, dy;
 			static double lastX = 0, lastY = 0;
-			static bool firstMouse = true;
 
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
 
+			firstMouse = false;
 			if (firstMouse) {
 				lastX = xpos;
 				lastY = ypos;
@@ -42,20 +42,29 @@ namespace lve {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 		}
 
+		// arrow for rotation
+		if (glfwGetKey(window, keys.lookUp) == GLFW_PRESS)
+			rotation.x -= lookSpeed * .3;
+		if (glfwGetKey(window, keys.lookDown) == GLFW_PRESS)
+			rotation.x += lookSpeed * .3;
+		if (glfwGetKey(window, keys.lookRight) == GLFW_PRESS)
+			rotation.y += lookSpeed * .3;
+		if (glfwGetKey(window, keys.lookLeft) == GLFW_PRESS)
+			rotation.y -= lookSpeed * .3;
 
 		// clamp rotation
-		rotation.x = glm::clamp(rotation.x, -89.0f, 89.0f);
+		float yaw = rotation.y;
+		float pitch = rotation.x;
 
+		// Clamp pitch to avoid flipping
+		pitch = glm::clamp(pitch, -89.0f, 89.0f);
 
+		glm::vec3 newForward;
+		newForward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+		newForward.y = sin(glm::radians(pitch));
+		newForward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
 
-
-		glm::vec3 rotationRad = glm::radians(rotation);
-		glm::vec3 forward = glm::vec3(
-			cos(rotationRad.y) * cos(rotationRad.x),
-			sin(rotationRad.x),
-			sin(rotationRad.y) * cos(rotationRad.x)
-		);
-		forward = glm::normalize(forward);
+		glm::vec3 forward = glm::normalize(newForward);
 		glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.f, 1.f, 0.f)));
 		glm::vec3 up = glm::normalize(glm::cross(right, forward));
 		if (glfwGetKey(window, keys.moveForward) == GLFW_PRESS)
@@ -84,12 +93,19 @@ namespace lve {
 		}
 
 		LveCamera lveCam;
+
+		int WX, WY;
+		glfwGetWindowSize(window, &WY, &WX);
+		aspect = static_cast<float>(WY) / static_cast<float>(WX);
+
 		lveCam.setPerspectiveProjection(fov, aspect, nearPlane, farPlane);
 		lveCam.setViewDirection(position, forward, up);
 		ubo.proj = lveCam.getProjection();
 		ubo.view = lveCam.getView();
 		ubo.projView = ubo.proj * ubo.view;
 		ubo.camPos = position;
+
 		ubo.rotation = rotation;
+		ubo.forward = forward;
 	}
 };	// namespace lve

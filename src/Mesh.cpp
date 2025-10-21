@@ -9,24 +9,42 @@
 #include <glm/gtx/hash.hpp>
 
 // std
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <iostream>
 #include <unordered_map>
 
+IndirectDraw::IndirectDraw(lve::LveDevice &device, entt::registry &entities, uint32_t MAX_DRAW) : lveDevice(device),
+	entities(entities), MAX_DRAW(MAX_DRAW)
+{
+	// create draw buffer
+	uint32_t commandSize = sizeof(VkDrawIndexedIndirectCommand);
+	VkDeviceSize bufferSize = commandSize * MAX_DRAW;
+
+	drawCommandsBuffer = std::make_unique<lve::LveBuffer>(
+		lveDevice,
+		commandSize,
+		MAX_DRAW,
+		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
+}
 
 void IndirectDraw::createMeshes(const std::vector<std::string> &files)
 {
+	drawCommands.clear();
+	vertices.clear();
+	indices.clear();
 	builder.clear();
-	builder.reserve(files.size());
-	int verticesCount = 0;
+
 	uint32_t indicesCount = 0;
 
-	for (const auto &file: files)
+	for (std::string const file: files)
 	{
 		Builder b;
 		b.loadModel(file);
-		builder.push_back(b);
+		b.id = indexCount;
 
 		for (auto i: b.vertices)
 			vertices.push_back(i);
@@ -34,44 +52,12 @@ void IndirectDraw::createMeshes(const std::vector<std::string> &files)
 		for (auto i: b.indices)
 			indices.push_back(i);
 
-		verticesCount += static_cast<int>(b.vertices.size());
-		indicesCount += b.indices.size();
+		builder.push_back(b);
+		indexCount++;
 	}
 
 	createVertexBuffers(vertices);
 	createIndexBuffers(indices);
-}
-
-void IndirectDraw::createObjects(std::vector<Object> obj)
-{
-	drawCommands.clear();
-	std::sort(obj.begin(), obj.end(),
-	              [](const Object& a, const Object& b)
-	              { return a.materialId < b.materialId; });
-
-	std::unordered_map<uint32_t, uint32_t> count;
-	for (const auto& o: obj)
-		count[o.materialId]++;
-
-	uint32_t firstIndex = 0;
-	int32_t vertexOffset = 0;
-
-	for (auto& b : builder) {
-		VkDrawIndexedIndirectCommand cmd{};
-		cmd.indexCount = static_cast<uint32_t>(b.indices.size());
-		cmd.instanceCount = count[b.id];
-		cmd.firstIndex = firstIndex;
-		cmd.vertexOffset = vertexOffset;
-		cmd.firstInstance = 0;
-
-		drawCommands.push_back(cmd);
-
-		// advance offsets
-		firstIndex   += static_cast<uint32_t>(b.indices.size());
-		vertexOffset += static_cast<int32_t>(b.vertices.size());
-	}
-
-	createDrawCommand();
 }
 
 void IndirectDraw::render(VkCommandBuffer commandBuffer)
@@ -89,6 +75,62 @@ void IndirectDraw::render(VkCommandBuffer commandBuffer)
 		sizeof(VkDrawIndexedIndirectCommand));
 }
 
+void IndirectDraw::update(double deltaTime, lve::LveBuffer& drawBuffer)
+{
+	drawCommands.clear();
+
+	std::map<uint32_t, uint32_t> indexMap;
+	int count = 0;
+	auto view = entities.view<Object, TransformComponent>();
+	for (auto [entity, obj, transform]: view.each())
+	{
+		indexMap[obj.materialId]++;
+		count++;
+	}
+
+	// sraw command vector
+
+	uint32_t firstIndex = 0;
+	int32_t vertexOffset = 0;
+	drawCommands.reserve(indexMap.size());
+	for (auto& b : builder)
+	{
+		VkDrawIndexedIndirectCommand cmd{};
+		cmd.indexCount = static_cast<uint32_t>(b.indices.size());
+		cmd.instanceCount = b.id;
+		cmd.firstIndex = firstIndex;
+		cmd.vertexOffset = vertexOffset;
+		cmd.firstInstance = 0;
+
+		drawCommands.push_back(cmd);
+
+		// advance offsets
+		firstIndex   += static_cast<uint32_t>(b.indices.size());
+		vertexOffset += static_cast<int32_t>(b.vertices.size());
+	}
+
+	// ssbo
+	std::vector<Object> instances;
+	instances.reserve(view.size_hint());
+
+	for (auto [entity, obj, transform] : view.each()) {
+		instances.push_back({
+			transform.mat4(),
+			obj.materialId
+		});
+	}
+
+	// sort ssbo
+	std::sort(instances.begin(), instances.end(),
+	[](const Object& a, const Object& b) {
+		return a.materialId < b.materialId;
+	});
+
+	drawBuffer.writeToBuffer(instances.data(), sizeof(Object) * instances.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+	createDrawCommand();
+}
+
 void IndirectDraw::createDrawCommand()
 {
 	uint32_t commandCount = drawCommands.size();
@@ -97,8 +139,8 @@ void IndirectDraw::createDrawCommand()
 
 	lve::LveBuffer stagingBuffer{
 		lveDevice,
-		commandSize,
-		commandCount,
+		sizeof(VkDrawIndexedIndirectCommand),
+		static_cast<uint32_t>(drawCommands.size()),
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 	};
@@ -106,15 +148,46 @@ void IndirectDraw::createDrawCommand()
 	stagingBuffer.map();
 	stagingBuffer.writeToBuffer((void *) drawCommands.data());
 
-	drawCommandsBuffer = std::make_unique<lve::LveBuffer>(
-		lveDevice,
-		commandSize,
-		commandCount,
-		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
+	// Copy to persistent GPU buffer
 	lveDevice.copyBuffer(stagingBuffer.getBuffer(), drawCommandsBuffer->getBuffer(), bufferSize);
 }
+
+void IndirectDraw::ensureBufferCapacity(uint32_t requiredCommandCount)
+{
+	size_t requiredSize = requiredCommandCount * sizeof(VkDrawIndexedIndirectCommand);
+	size_t currBufferSize = MAX_DRAW;
+
+	// If current buffer is big enough, do nothing
+	if (requiredSize <= currBufferSize)
+		return;
+
+	// Decide new size (e.g. double it to avoid frequent reallocations)
+	size_t newSize = std::max(requiredSize, currBufferSize * 2);
+
+	// 1. Create new buffer
+	auto newBuffer = std::make_unique<lve::LveBuffer>(
+		lveDevice,
+		sizeof(VkDrawIndexedIndirectCommand),
+		static_cast<uint32_t>(newSize / sizeof(VkDrawIndexedIndirectCommand)),
+		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
+
+	// 2. Copy old data (if any)
+	if (drawCommandsBuffer)
+	{
+		lveDevice.copyBuffer(
+			drawCommandsBuffer->getBuffer(),
+			newBuffer->getBuffer(),
+			currBufferSize
+		);
+	}
+
+	// 3. Replace the old buffer
+	drawCommandsBuffer = std::move(newBuffer);
+	currBufferSize = newSize;
+}
+
 
 void IndirectDraw::createVertexBuffers(const std::vector<Vertex> &vertices)
 {
@@ -308,4 +381,44 @@ glm::mat3 TransformComponent::normalMatrix()
 			invScale.z * (c1 * c2),
 		},
 	};
+}
+
+std::vector<VkVertexInputBindingDescription> IndirectDraw::getBindingDescriptions()
+{
+	std::vector<VkVertexInputBindingDescription> bindingDescriptions(1);
+	bindingDescriptions[0].binding = 0;
+	bindingDescriptions[0].stride = sizeof(Vertex);
+	bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	return bindingDescriptions;
+}
+
+std::vector<VkVertexInputAttributeDescription> IndirectDraw::getAttributeDescriptions()
+{
+	std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
+
+	attributeDescriptions.push_back({0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)});
+	attributeDescriptions.push_back({1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color)});
+	attributeDescriptions.push_back({2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal)});
+	attributeDescriptions.push_back({3, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv)});
+
+	return attributeDescriptions;
+}
+
+std::vector<VkVertexInputBindingDescription> IndirectDraw::getBindingDescriptionsShadow()
+{
+	std::vector<VkVertexInputBindingDescription> bindingDescriptions(1);
+	bindingDescriptions[0].binding = 0;
+	bindingDescriptions[0].stride = sizeof(Vertex);
+	bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	return bindingDescriptions;
+}
+
+std::vector<VkVertexInputAttributeDescription> IndirectDraw::getAttributeDescriptionsShadow()
+{
+	std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
+
+	attributeDescriptions.push_back({0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)});
+	attributeDescriptions.push_back({1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal)});
+
+	return attributeDescriptions;
 }

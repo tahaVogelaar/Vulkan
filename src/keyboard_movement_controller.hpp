@@ -10,6 +10,7 @@ struct GlobalUbo {
 	glm::mat4 projView;
 	alignas(16) glm::vec3 camPos;
 	alignas(16) glm::vec3 rotation;
+	alignas(16) glm::vec3 forward;
 };
 
 namespace lve {
@@ -22,13 +23,18 @@ namespace lve {
 			int moveBackward = GLFW_KEY_S;
 			int moveUp = GLFW_KEY_SPACE;
 			int moveDown = GLFW_KEY_LEFT_CONTROL;
+			int lookUp = GLFW_KEY_UP;
+			int lookDown = GLFW_KEY_DOWN;
+			int lookLeft = GLFW_KEY_LEFT;
+			int lookRight = GLFW_KEY_RIGHT;
 		};
 
 		void update(GLFWwindow *window, float dt, GlobalUbo &ubo);
 
 		KeyMappings keys{};
-		float moveSpeed{3.f};
+		float moveSpeed{1.f};
 		float lookSpeed{0.1f};
 		float fov = 70.f, aspect = 1.f, nearPlane = .1f, farPlane = 1000.f;
+		bool firstMouse = true;
 	};
 } // namespace lve

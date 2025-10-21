@@ -8,96 +8,112 @@
 #include <vector>
 
 namespace lve {
+	class LveDescriptorSetLayout {
+	public:
+		class Builder {
+		public:
+			Builder(LveDevice &lveDevice) : lveDevice{lveDevice}
+			{
+			}
 
-class LveDescriptorSetLayout {
- public:
-  class Builder {
-   public:
-    Builder(LveDevice &lveDevice) : lveDevice{lveDevice} {}
+			Builder &addBinding(
+				uint32_t binding,
+				VkDescriptorType descriptorType,
+				VkShaderStageFlags stageFlags,
+				uint32_t count = 1);
 
-    Builder &addBinding(
-        uint32_t binding,
-        VkDescriptorType descriptorType,
-        VkShaderStageFlags stageFlags,
-        uint32_t count = 1);
-    std::unique_ptr<LveDescriptorSetLayout> build() const;
+			std::unique_ptr<LveDescriptorSetLayout> build() const;
 
-   private:
-    LveDevice &lveDevice;
-    std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings{};
-  };
+		private:
+			LveDevice &lveDevice;
+			std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings{};
+		};
 
-  LveDescriptorSetLayout(
-      LveDevice &lveDevice, std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings);
-  ~LveDescriptorSetLayout();
-  LveDescriptorSetLayout(const LveDescriptorSetLayout &) = delete;
-  LveDescriptorSetLayout &operator=(const LveDescriptorSetLayout &) = delete;
+		LveDescriptorSetLayout(
+			LveDevice &lveDevice, std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings);
 
-  VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
+		~LveDescriptorSetLayout();
 
- private:
-  LveDevice &lveDevice;
-  VkDescriptorSetLayout descriptorSetLayout;
-  std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings;
+		LveDescriptorSetLayout(const LveDescriptorSetLayout &) = delete;
 
-  friend class LveDescriptorWriter;
-};
+		LveDescriptorSetLayout &operator=(const LveDescriptorSetLayout &) = delete;
 
-class LveDescriptorPool {
- public:
-  class Builder {
-   public:
-    Builder(LveDevice &lveDevice) : lveDevice{lveDevice} {}
+		VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
 
-    Builder &addPoolSize(VkDescriptorType descriptorType, uint32_t count);
-    Builder &setPoolFlags(VkDescriptorPoolCreateFlags flags);
-    Builder &setMaxSets(uint32_t count);
-    std::unique_ptr<LveDescriptorPool> build() const;
+	private:
+		LveDevice &lveDevice;
+		VkDescriptorSetLayout descriptorSetLayout;
+		std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings;
 
-   private:
-    LveDevice &lveDevice;
-    std::vector<VkDescriptorPoolSize> poolSizes{};
-    uint32_t maxSets = 1000;
-    VkDescriptorPoolCreateFlags poolFlags = 0;
-  };
+		friend class LveDescriptorWriter;
+	};
 
-  LveDescriptorPool(
-      LveDevice &lveDevice,
-      uint32_t maxSets,
-      VkDescriptorPoolCreateFlags poolFlags,
-      const std::vector<VkDescriptorPoolSize> &poolSizes);
-  ~LveDescriptorPool();
-  LveDescriptorPool(const LveDescriptorPool &) = delete;
-  LveDescriptorPool &operator=(const LveDescriptorPool &) = delete;
+	class LveDescriptorPool {
+	public:
+		class Builder {
+		public:
+			Builder(LveDevice &lveDevice) : lveDevice{lveDevice}
+			{
+			}
 
-  bool allocateDescriptor(
-      const VkDescriptorSetLayout descriptorSetLayout, VkDescriptorSet &descriptor) const;
+			Builder &addPoolSize(VkDescriptorType descriptorType, uint32_t count);
 
-  void freeDescriptors(std::vector<VkDescriptorSet> &descriptors) const;
+			Builder &setPoolFlags(VkDescriptorPoolCreateFlags flags);
 
-  void resetPool();
+			Builder &setMaxSets(uint32_t count);
 
- private:
-  LveDevice &lveDevice;
-  VkDescriptorPool descriptorPool;
+			std::unique_ptr<LveDescriptorPool> build() const;
 
-  friend class LveDescriptorWriter;
-};
+		private:
+			LveDevice &lveDevice;
+			std::vector<VkDescriptorPoolSize> poolSizes{};
+			uint32_t maxSets = 1000;
+			VkDescriptorPoolCreateFlags poolFlags = 0;
+		};
 
-class LveDescriptorWriter {
- public:
-  LveDescriptorWriter(LveDescriptorSetLayout &setLayout, LveDescriptorPool &pool);
+		LveDescriptorPool(
+			LveDevice &lveDevice,
+			uint32_t maxSets,
+			VkDescriptorPoolCreateFlags poolFlags,
+			const std::vector<VkDescriptorPoolSize> &poolSizes);
 
-  LveDescriptorWriter &writeBuffer(uint32_t binding, VkDescriptorBufferInfo *bufferInfo);
-  LveDescriptorWriter &writeImage(uint32_t binding, VkDescriptorImageInfo *imageInfo);
+		~LveDescriptorPool();
 
-  bool build(VkDescriptorSet &set);
-  void overwrite(VkDescriptorSet &set);
+		LveDescriptorPool(const LveDescriptorPool &) = delete;
 
- private:
-  LveDescriptorSetLayout &setLayout;
-  LveDescriptorPool &pool;
-  std::vector<VkWriteDescriptorSet> writes;
-};
+		LveDescriptorPool &operator=(const LveDescriptorPool &) = delete;
 
-}  // namespace lve
+		bool allocateDescriptor(
+			const VkDescriptorSetLayout descriptorSetLayout, VkDescriptorSet &descriptor) const;
+
+		void freeDescriptors(std::vector<VkDescriptorSet> &descriptors) const;
+
+		void resetPool();
+
+	private:
+		LveDevice &lveDevice;
+		VkDescriptorPool descriptorPool;
+
+		friend class LveDescriptorWriter;
+	};
+
+	class LveDescriptorWriter {
+	public:
+		LveDescriptorWriter(LveDescriptorSetLayout &setLayout, LveDescriptorPool &pool);
+
+		LveDescriptorWriter &writeBuffer(uint32_t binding, VkDescriptorBufferInfo *bufferInfo);
+
+		LveDescriptorWriter &writeImage(uint32_t binding, VkDescriptorImageInfo *imageInfo);
+
+		LveDescriptorWriter &writeImages(uint32_t binding, VkDescriptorImageInfo *imageInfos, uint32_t count);
+
+		bool build(VkDescriptorSet &set);
+
+		void overwrite(VkDescriptorSet &set);
+
+	private:
+		LveDescriptorSetLayout &setLayout;
+		LveDescriptorPool &pool;
+		std::vector<VkWriteDescriptorSet> writes;
+	};
+} // namespace lve

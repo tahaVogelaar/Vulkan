@@ -21,6 +21,7 @@ public:
   VkRenderPass getSwapChainRenderPass() const { return lveSwapChain->getRenderPass(); }
   float getAspectRatio() const { return lveSwapChain->extentAspectRatio(); }
   bool isFrameInProgress() const { return isFrameStarted; }
+  LveSwapChain* getSwapChain() const {return lveSwapChain.get();}
 
   VkCommandBuffer getCurrentCommandBuffer() const {
     assert(isFrameStarted && "Cannot get command buffer when frame not in progress");

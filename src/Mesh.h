@@ -9,74 +9,90 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include "entt.hpp"
 
 struct Vertex {
-  glm::vec3 position{};
-  glm::vec3 color{};
-  glm::vec3 normal{};
-  glm::vec2 uv{};
+	glm::vec3 position{};
+	glm::vec3 color{};
+	glm::vec3 normal{};
+	glm::vec2 uv{};
 
-  static std::vector<VkVertexInputBindingDescription> getBindingDescriptions();
-  static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
+	static std::vector<VkVertexInputBindingDescription> getBindingDescriptions();
 
-  bool operator==(const Vertex &other) const {
-    return position == other.position && color == other.color && normal == other.normal &&
-           uv == other.uv;
-  }
+	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
+
+	bool operator==(const Vertex &other) const
+	{
+		return position == other.position && color == other.color && normal == other.normal &&
+				uv == other.uv;
+	}
 };
 
 struct Builder {
-  std::vector<Vertex> vertices{};
-  std::vector<uint32_t> indices{};
-  uint32_t id = 0;
+	std::vector<Vertex> vertices{};
+	std::vector<uint32_t> indices{};
+	uint32_t id = 0;
 
-  void loadModel(const std::string &filepath);
+	void loadModel(const std::string &filepath);
 };
 
 struct TransformComponent {
-  glm::vec3 translation{};
-  glm::vec3 scale{1.f, 1.f, 1.f};
-  glm::vec3 rotation{};
+	glm::vec3 translation{};
+	glm::vec3 scale{1.f, 1.f, 1.f};
+	glm::vec3 rotation{};
 
-  // Matrix corrsponds to Translate * Ry * Rx * Rz * Scale
-  // Rotations correspond to Tait-bryan angles of Y(1), X(2), Z(3)
-  // https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
-  glm::mat4 mat4();
+	// Matrix corrsponds to Translate * Ry * Rx * Rz * Scale
+	// Rotations correspond to Tait-bryan angles of Y(1), X(2), Z(3)
+	// https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
+	glm::mat4 mat4();
 
-  glm::mat3 normalMatrix();
+	glm::mat3 normalMatrix();
 };
 
 struct Object {
-  glm::mat4 model;
-  uint32_t materialId;
+	glm::mat4 model;
+	uint32_t materialId;
+	uint32_t _pad[3];
 };
 
 class IndirectDraw {
-  public:
-  IndirectDraw() = default;
-  IndirectDraw(lve::LveDevice &device) : lveDevice(device) {}
+public:
+	IndirectDraw(lve::LveDevice &device, entt::registry& entities, uint32_t MAX_DRAW);
 
-  void createMeshes(const std::vector<std::string>& files);
-  void createObjects(std::vector<Object> obj);
-  void render(VkCommandBuffer commandBuffer);
+	void createMeshes(const std::vector<std::string> &files);
+
+	void update(double deltaTime, lve::LveBuffer& drawBuffer);
+
+	void render(VkCommandBuffer commandBuffer);
 
 private:
-  std::vector<Builder> builder;
-  std::vector<Object> objects;
+	entt::registry& entities;
+	uint32_t MAX_DRAW;
 
-  std::unique_ptr<lve::LveBuffer> vertexBuffer;
-  uint32_t vertexCount = 0;
-  std::unique_ptr<lve::LveBuffer> indexBuffer;
-  uint32_t indexCount = 0;
+	std::unique_ptr<lve::LveBuffer> vertexBuffer;
+	uint32_t vertexCount = 0;
+	std::unique_ptr<lve::LveBuffer> indexBuffer;
+	uint32_t indexCount = 0;
 
-  std::vector<Vertex> vertices;
-  std::vector<uint32_t> indices;
-  std::vector<VkDrawIndexedIndirectCommand> drawCommands;
-  std::unique_ptr<lve::LveBuffer> drawCommandsBuffer;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+	std::vector<Builder> builder;
+	std::vector<VkDrawIndexedIndirectCommand> drawCommands;
+	std::unique_ptr<lve::LveBuffer> drawCommandsBuffer;
 
-  void createVertexBuffers(const std::vector<Vertex> &vertices);
-  void createIndexBuffers(const std::vector<uint32_t> &indices);
-  void createDrawCommand();
+	void createVertexBuffers(const std::vector<Vertex> &vertices);
+	void createIndexBuffers(const std::vector<uint32_t> &indices);
+	void ensureBufferCapacity(uint32_t requiredCommandCount);
+	void createDrawCommand();
 
-  lve::LveDevice &lveDevice;
+	lve::LveDevice &lveDevice;
+
+public:
+	static std::vector<VkVertexInputBindingDescription> getBindingDescriptions();
+
+	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
+
+	static std::vector<VkVertexInputBindingDescription> getBindingDescriptionsShadow();
+
+	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptionsShadow();
 };
