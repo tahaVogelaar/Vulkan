@@ -38,8 +38,8 @@ namespace lve {
 			const std::string &vertFilepath,
 			const std::string &fragFilepath,
 			const PipelineConfigInfo &configInfo,
-			std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)() = IndirectDraw::getBindingDescriptions,
-			std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)() = IndirectDraw::getAttributeDescriptions);
+			std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)() = RenderBucket::getBindingDescriptions,
+			std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)() = RenderBucket::getAttributeDescriptions);
 
 		~LvePipeline();
 

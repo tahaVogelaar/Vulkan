@@ -38,8 +38,10 @@ struct Builder {
 
 struct TransformComponent {
 	glm::vec3 translation{};
-	glm::vec3 scale{1.f, 1.f, 1.f};
 	glm::vec3 rotation{};
+	glm::vec3 scale{1.f, 1.f, 1.f};
+	glm::mat4 worldMatrix{1.0f};
+	bool dirty = true;
 
 	// Matrix corrsponds to Translate * Ry * Rx * Rz * Scale
 	// Rotations correspond to Tait-bryan angles of Y(1), X(2), Z(3)
@@ -55,19 +57,56 @@ struct Object {
 	uint32_t _pad[3];
 };
 
-class IndirectDraw {
-public:
-	IndirectDraw(lve::LveDevice &device, entt::registry& entities, uint32_t MAX_DRAW);
+// i dont wanna explain this
+struct CpuObject {
+	entt::entity entity;
+	entt::entity parent;
+};
 
+// send this to RenderBucket
+struct BucketSendData {
+	glm::mat4 model;
+	uint32_t materialId;
+	entt::entity entity;
+	entt::entity parent;
+};
+
+struct Handle {
+	uint32_t index;
+	uint32_t generation;
+};
+
+
+class RenderBucket {
+public:
+	RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO);
 	void createMeshes(const std::vector<std::string> &files);
 
-	void update(double deltaTime, lve::LveBuffer& drawBuffer);
+	Handle addInstance(BucketSendData &item);
+	void deleteInstance(Handle h);
+	void updateSSBO(lve::LveBuffer& objectSSBOA);
+	Object* get(const Handle& h) {
+		if (h.index >= bucket.size()) return nullptr;
+		if (generations[h.index] != h.generation) return nullptr; // stale handle
+		return &bucket[h.index];
+	}
 
+	void update(double deltaTime, lve::LveBuffer& objectSSBO);
 	void render(VkCommandBuffer commandBuffer);
+	std::unique_ptr<lve::LveBuffer> stagingBuffer;
 
 private:
-	entt::registry& entities;
+	std::map<uint32_t, uint32_t> objectTypeIndex; // this is the batch it creates every
+	std::vector<Object> bucket; // holds drawable objects (unsorted)
+	std::vector<Object> sortedBucket; // sorts bucket every frame
+	std::vector<CpuObject> cpuBucket;
+
+	std::vector<bool> deadList;
+	std::vector<uint32_t> generations; // stores how many times that slot has been reused
+	std::vector<uint32_t> freeList; // holds indices of deleted slots that can be reused
+
 	uint32_t MAX_DRAW;
+	uint32_t OBJECT_TYPES = 2;
 
 	std::unique_ptr<lve::LveBuffer> vertexBuffer;
 	uint32_t vertexCount = 0;
@@ -86,6 +125,7 @@ private:
 	void createDrawCommand();
 
 	lve::LveDevice &lveDevice;
+	lve::LveBuffer& objectSSBO;
 
 public:
 	static std::vector<VkVertexInputBindingDescription> getBindingDescriptions();

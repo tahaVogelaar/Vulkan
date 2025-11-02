@@ -2,10 +2,12 @@
 
 #include "lve_device.hpp"
 #include "lve_pipeline.hpp"
+#include <lve_shadow_renderer.h>
 #include "memory"
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include "lve_shadowMap.h"
 
 namespace lve {
 	struct PointLight {
@@ -51,12 +53,48 @@ namespace lve {
 	struct PointLightData {
 		PointLight light;
 		std::unique_ptr<ShadowMap> shadowMap;
+		bool dirty = true;
+
+		void create()
+		{
+
+		}
+
+		void createShadowMap(LvePointShadowRenderer& shadowRenderer, LveDevice& device, VkExtent2D shadowExtent)
+		{
+			shadowMap = std::make_unique<ShadowMap>(device, shadowExtent);
+			shadowRenderer.createFramebuffers(shadowMap->getImageView(), shadowMap->getExtent(), 1);
+		}
 
 		void update()
 		{
 			glm::mat4 lightView = glm::lookAt(light.position, light.position + light.rotation, glm::vec3(0,1,0));
 			glm::mat4 lightProj = glm::perspective(glm::radians(70.f), 1.0f, .1f, 50.0f);
 			light.proj = lightProj * lightView;
+		}
+
+		void updateBuffer(LveBuffer& buffer)
+		{
+			buffer.writeToBuffer(&light, 1 * sizeof(PointLight));
+			buffer.flush();
+		}
+
+		void updateDescriptorSet(lve::LveDevice& device, VkDescriptorSet globalDescriptorSet) const
+		{
+			VkDescriptorImageInfo imageInfo;
+			imageInfo.imageView = shadowMap->getImageView();
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfo.sampler = shadowMap->getSampler();
+
+			VkWriteDescriptorSet write{};
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			write.dstSet = globalDescriptorSet;
+			write.dstBinding = 4;
+			write.pImageInfo = &imageInfo;
+			write.descriptorCount = 1;
+
+			vkUpdateDescriptorSets(device.device(), 1, &write, 0, nullptr);
 		}
 	};
 }

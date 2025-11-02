@@ -17,6 +17,8 @@ set(IMGUI_SOURCES
         src/lve_light.h
         src/lve_shadow_renderer.cpp
         src/lve_shadow_renderer.h
+        src/coreRenderer.cpp
+        src/coreRenderer.h
 )
 
 # Collect all sources for the library (excluding main.cpp)
@@ -44,7 +46,10 @@ add_library(mylib STATIC ${MYLIB_SOURCES}
         src/lve_shadowMap.h
         external/entt.hpp
         src/lve_light.cpp
-        src/lve_light.h)
+        src/lve_light.h
+        src/coreRenderer.cpp
+        src/coreRenderer.h
+        external/sky-models-master)
 
 
 # Include headers
@@ -66,6 +71,9 @@ add_executable(untitled4 src/main.cpp
         external/entt.hpp
         src/lve_light.cpp
         src/lve_light.h
+        src/coreRenderer.cpp
+        src/coreRenderer.h
+        external/sky-models-master
 )
 
 find_library(SHADERC_LIB shaderc REQUIRED)

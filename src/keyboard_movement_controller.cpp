@@ -15,7 +15,17 @@ namespace lve {
 	{
 		glm::vec3 position = ubo.camPos, rotation = ubo.rotation;
 
-		if (glfwGetMouseButton(window, 1)) {
+		if (glfwGetMouseButton(window, 1) && firstMouse)
+		{
+
+			int WX, WY; glfwGetWindowSize(window, &WY, &WX);
+			glfwSetCursorPos(window, WY / 2, WX / 2);
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+			firstMouse = false;
+			return;
+		}
+		else if (glfwGetMouseButton(window, 1)) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 			double dx, dy;
@@ -23,13 +33,6 @@ namespace lve {
 
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
-
-			firstMouse = false;
-			if (firstMouse) {
-				lastX = xpos;
-				lastY = ypos;
-				firstMouse = false;
-			}
 
 			dx = xpos - lastX;
 			dy = ypos - lastY;
@@ -41,6 +44,7 @@ namespace lve {
 		} else {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 		}
+		if (glfwGetMouseButton(window, 1) == GLFW_RELEASE) firstMouse = true;
 
 		// arrow for rotation
 		if (glfwGetKey(window, keys.lookUp) == GLFW_PRESS)

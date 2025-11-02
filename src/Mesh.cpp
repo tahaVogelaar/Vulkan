@@ -15,8 +15,8 @@
 #include <iostream>
 #include <unordered_map>
 
-IndirectDraw::IndirectDraw(lve::LveDevice &device, entt::registry &entities, uint32_t MAX_DRAW) : lveDevice(device),
-	entities(entities), MAX_DRAW(MAX_DRAW)
+RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO) :
+	lveDevice(device), objectSSBO(objectSSBO), MAX_DRAW(MAX_DRAW)
 {
 	// create draw buffer
 	uint32_t commandSize = sizeof(VkDrawIndexedIndirectCommand);
@@ -26,19 +26,22 @@ IndirectDraw::IndirectDraw(lve::LveDevice &device, entt::registry &entities, uin
 		lveDevice,
 		commandSize,
 		MAX_DRAW,
-		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
 	);
 }
 
-void IndirectDraw::createMeshes(const std::vector<std::string> &files)
+void RenderBucket::createMeshes(const std::vector<std::string> &files)
 {
 	drawCommands.clear();
 	vertices.clear();
 	indices.clear();
 	builder.clear();
 
-	uint32_t indicesCount = 0;
+	uint32_t indexCount = 0;
+	OBJECT_TYPES = 0;
 
 	for (std::string const file: files)
 	{
@@ -46,21 +49,28 @@ void IndirectDraw::createMeshes(const std::vector<std::string> &files)
 		b.loadModel(file);
 		b.id = indexCount;
 
-		for (auto i: b.vertices)
-			vertices.push_back(i);
+		for (auto i: b.vertices) vertices.push_back(i);
 
-		for (auto i: b.indices)
-			indices.push_back(i);
-
+		for (auto i: b.indices) indices.push_back(i);
+		OBJECT_TYPES++;
 		builder.push_back(b);
 		indexCount++;
 	}
 
 	createVertexBuffers(vertices);
 	createIndexBuffers(indices);
+
+	stagingBuffer = std::make_unique<lve::LveBuffer>(
+	lveDevice,
+	sizeof(VkDrawIndexedIndirectCommand) * OBJECT_TYPES,
+	1,
+	VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+);
+	stagingBuffer->map();
 }
 
-void IndirectDraw::render(VkCommandBuffer commandBuffer)
+void RenderBucket::render(VkCommandBuffer commandBuffer)
 {
 	VkBuffer vertexBuffers[] = {vertexBuffer->getBuffer()};
 	VkDeviceSize offsets[] = {0};
@@ -75,121 +85,162 @@ void IndirectDraw::render(VkCommandBuffer commandBuffer)
 		sizeof(VkDrawIndexedIndirectCommand));
 }
 
-void IndirectDraw::update(double deltaTime, lve::LveBuffer& drawBuffer)
+void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 {
-	drawCommands.clear();
-
-	std::map<uint32_t, uint32_t> indexMap;
-	int count = 0;
-	auto view = entities.view<Object, TransformComponent>();
-	for (auto [entity, obj, transform]: view.each())
-	{
-		indexMap[obj.materialId]++;
-		count++;
-	}
-
-	// sraw command vector
-
+	// stuff
 	uint32_t firstIndex = 0;
 	int32_t vertexOffset = 0;
-	drawCommands.reserve(indexMap.size());
-	for (auto& b : builder)
-	{
-		VkDrawIndexedIndirectCommand cmd{};
-		cmd.indexCount = static_cast<uint32_t>(b.indices.size());
-		cmd.instanceCount = b.id;
-		cmd.firstIndex = firstIndex;
-		cmd.vertexOffset = vertexOffset;
-		cmd.firstInstance = 0;
+	uint32_t runningBaseInstance = 0;
+	drawCommands.clear();
+	drawCommands.reserve(OBJECT_TYPES);
+	sortedBucket.clear();
+	sortedBucket.reserve(bucket.size());
 
+	for (uint32_t i = 0; i < OBJECT_TYPES; i++)
+		objectTypeIndex[i] = 0;
+
+	for (uint32_t i = 0; i < bucket.size(); i++)
+	{
+		if (!deadList[i]) continue;
+		objectTypeIndex[bucket[i].materialId]++;
+		sortedBucket.push_back(bucket[i]);
+	}
+
+	std::sort(sortedBucket.begin(), sortedBucket.end(),
+		[](const Object& a, const Object& b){ return a.materialId < b.materialId; });
+
+	for (int i = 0; i < OBJECT_TYPES; i++)
+	{
+		uint32_t instancesForThisMaterial = objectTypeIndex[i];
+
+		VkDrawIndexedIndirectCommand cmd{
+			static_cast<uint32_t>(builder[i].indices.size()),   // indexCount
+			instancesForThisMaterial,                  // instanceCount
+			firstIndex,                                // firstIndex
+			vertexOffset,                              // vertexOffset
+			runningBaseInstance                         // firstInstance
+		};
 		drawCommands.push_back(cmd);
 
-		// advance offsets
-		firstIndex   += static_cast<uint32_t>(b.indices.size());
-		vertexOffset += static_cast<int32_t>(b.vertices.size());
+		// offsets
+		firstIndex += static_cast<uint32_t>(builder[i].indices.size());
+		vertexOffset += static_cast<int32_t>(builder[i].vertices.size());
+		runningBaseInstance += instancesForThisMaterial;
 	}
 
-	// ssbo
-	std::vector<Object> instances;
-	instances.reserve(view.size_hint());
-
-	for (auto [entity, obj, transform] : view.each()) {
-		instances.push_back({
-			transform.mat4(),
-			obj.materialId
-		});
-	}
-
-	// sort ssbo
-	std::sort(instances.begin(), instances.end(),
-	[](const Object& a, const Object& b) {
-		return a.materialId < b.materialId;
-	});
-
-	drawBuffer.writeToBuffer(instances.data(), sizeof(Object) * instances.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-
-	createDrawCommand();
+	updateSSBO(objectSSBOA);
+    createDrawCommand();
 }
 
-void IndirectDraw::createDrawCommand()
+void RenderBucket::updateSSBO(lve::LveBuffer& objectSSBOA)
 {
-	uint32_t commandCount = drawCommands.size();
-	VkDeviceSize bufferSize = drawCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
-	uint32_t commandSize = sizeof(VkDrawIndexedIndirectCommand);
 
-	lve::LveBuffer stagingBuffer{
-		lveDevice,
-		sizeof(VkDrawIndexedIndirectCommand),
-		static_cast<uint32_t>(drawCommands.size()),
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-	};
+	if (bucket.empty()) return;
+	if (objectSSBOA.getMappedMemory() == nullptr)
+	{
+		objectSSBOA.map();
+	}
 
-	stagingBuffer.map();
-	stagingBuffer.writeToBuffer((void *) drawCommands.data());
+	objectSSBOA.writeToBuffer(sortedBucket.data(), VK_WHOLE_SIZE);
+	objectSSBOA.flush(VK_WHOLE_SIZE);
+
+
+	for (size_t i = 0; i < bucket.size(); i++) {
+		//if (bucket[i].dirty)
+		//{
+		//objectSSBOA.writeToIndex(&bucket[i], i);
+		//objectSSBOA.flush(alignedSize, i * alignedSize);
+		//	bucket[i].dirty = false;
+		//}
+	}
+
+}
+ //
+void RenderBucket::createDrawCommand()
+{
+	VkDeviceSize bufferSize = 1 * sizeof(VkDrawIndexedIndirectCommand);
+
+	stagingBuffer->writeToBuffer((void *) drawCommands.data());
 
 	// Copy to persistent GPU buffer
-	lveDevice.copyBuffer(stagingBuffer.getBuffer(), drawCommandsBuffer->getBuffer(), bufferSize);
+	lveDevice.copyBuffer(stagingBuffer->getBuffer(), drawCommandsBuffer->getBuffer(), bufferSize);
+
 }
 
-void IndirectDraw::ensureBufferCapacity(uint32_t requiredCommandCount)
+void RenderBucket::deleteInstance(Handle h)
 {
-	size_t requiredSize = requiredCommandCount * sizeof(VkDrawIndexedIndirectCommand);
-	size_t currBufferSize = MAX_DRAW;
+	if (h.index >= bucket.size()) return;
+	generations[h.index]++; // invalidate handle
+	freeList.push_back(h.index);
+	deadList[h.index] = false;
+}
 
-	// If current buffer is big enough, do nothing
-	if (requiredSize <= currBufferSize)
-		return;
+Handle RenderBucket::addInstance( BucketSendData& item) {
+	Object o{ .model = item.model, .materialId = item.materialId };
+	CpuObject c{ .entity = item.entity, .parent = item.parent };
 
-	// Decide new size (e.g. double it to avoid frequent reallocations)
-	size_t newSize = std::max(requiredSize, currBufferSize * 2);
+	uint32_t index = 0;
+	if (!freeList.empty()) {
+		index = freeList.back();
+		freeList.pop_back();
+		// reuse slot: overwrite both vectors
+		bucket[index] = o;
+		deadList[index] = true;
+		cpuBucket[index] = c;
+		// generation stays as-is (the handle returned must use current generation)
+	} else {
+		index = static_cast<uint32_t>(bucket.size());
+		bucket.push_back(o);
+		cpuBucket.push_back(c);
+		generations.push_back(0); // new slot generation starts at 0
+		deadList.push_back(true);
+	}
 
-	// 1. Create new buffer
+	return Handle{ index, generations[index] };
+}
+
+
+void RenderBucket::ensureBufferCapacity(uint32_t requiredCommandCount)
+{
+	const VkDeviceSize commandSize = sizeof(VkDrawIndexedIndirectCommand);
+	VkDeviceSize requiredBytes = static_cast<VkDeviceSize>(requiredCommandCount) * commandSize;
+	VkDeviceSize currBytes = static_cast<VkDeviceSize>(MAX_DRAW) * commandSize; // MAX_DRAW stores number of commands capacity
+
+	if (requiredBytes <= currBytes) return;
+
+	// New capacity: double the command count or just enough to hold required
+	uint32_t newCommandCapacity = static_cast<uint32_t>(std::max(requiredBytes / commandSize, currBytes / commandSize * 2));
+	if (newCommandCapacity == 0) newCommandCapacity = requiredCommandCount;
+
 	auto newBuffer = std::make_unique<lve::LveBuffer>(
 		lveDevice,
-		sizeof(VkDrawIndexedIndirectCommand),
-		static_cast<uint32_t>(newSize / sizeof(VkDrawIndexedIndirectCommand)),
+		static_cast<uint32_t>(commandSize),
+		newCommandCapacity,
 		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
 	);
 
-	// 2. Copy old data (if any)
+	// Copy old data (if any) — copy old byte size
 	if (drawCommandsBuffer)
 	{
 		lveDevice.copyBuffer(
 			drawCommandsBuffer->getBuffer(),
 			newBuffer->getBuffer(),
-			currBufferSize
+			currBytes
 		);
 	}
 
-	// 3. Replace the old buffer
+	// swap and update capacity
 	drawCommandsBuffer = std::move(newBuffer);
-	currBufferSize = newSize;
+	MAX_DRAW = newCommandCapacity;
 }
 
 
-void IndirectDraw::createVertexBuffers(const std::vector<Vertex> &vertices)
+
+
+
+
+void RenderBucket::createVertexBuffers(const std::vector<Vertex> &vertices)
 {
 	vertexCount = static_cast<uint32_t>(vertices.size());
 	assert(vertexCount >= 3 && "Vertex count must be at least 3");
@@ -217,7 +268,7 @@ void IndirectDraw::createVertexBuffers(const std::vector<Vertex> &vertices)
 	lveDevice.copyBuffer(stagingBuffer.getBuffer(), vertexBuffer->getBuffer(), bufferSize);
 }
 
-void IndirectDraw::createIndexBuffers(const std::vector<uint32_t> &indices)
+void RenderBucket::createIndexBuffers(const std::vector<uint32_t> &indices)
 {
 	indexCount = static_cast<uint32_t>(indices.size());
 
@@ -331,6 +382,7 @@ glm::mat4 TransformComponent::mat4()
 	const float s2 = glm::sin(rotation.x);
 	const float c1 = glm::cos(rotation.y);
 	const float s1 = glm::sin(rotation.y);
+	dirty = false;
 	return glm::mat4{
 		{
 			scale.x * (c1 * c3 + s1 * s2 * s3),
@@ -383,7 +435,7 @@ glm::mat3 TransformComponent::normalMatrix()
 	};
 }
 
-std::vector<VkVertexInputBindingDescription> IndirectDraw::getBindingDescriptions()
+std::vector<VkVertexInputBindingDescription> RenderBucket::getBindingDescriptions()
 {
 	std::vector<VkVertexInputBindingDescription> bindingDescriptions(1);
 	bindingDescriptions[0].binding = 0;
@@ -392,7 +444,7 @@ std::vector<VkVertexInputBindingDescription> IndirectDraw::getBindingDescription
 	return bindingDescriptions;
 }
 
-std::vector<VkVertexInputAttributeDescription> IndirectDraw::getAttributeDescriptions()
+std::vector<VkVertexInputAttributeDescription> RenderBucket::getAttributeDescriptions()
 {
 	std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
 
@@ -404,7 +456,7 @@ std::vector<VkVertexInputAttributeDescription> IndirectDraw::getAttributeDescrip
 	return attributeDescriptions;
 }
 
-std::vector<VkVertexInputBindingDescription> IndirectDraw::getBindingDescriptionsShadow()
+std::vector<VkVertexInputBindingDescription> RenderBucket::getBindingDescriptionsShadow()
 {
 	std::vector<VkVertexInputBindingDescription> bindingDescriptions(1);
 	bindingDescriptions[0].binding = 0;
@@ -413,7 +465,7 @@ std::vector<VkVertexInputBindingDescription> IndirectDraw::getBindingDescription
 	return bindingDescriptions;
 }
 
-std::vector<VkVertexInputAttributeDescription> IndirectDraw::getAttributeDescriptionsShadow()
+std::vector<VkVertexInputAttributeDescription> RenderBucket::getAttributeDescriptionsShadow()
 {
 	std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
 

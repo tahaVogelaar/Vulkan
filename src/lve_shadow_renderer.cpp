@@ -152,7 +152,7 @@ namespace lve {
 			vertShaderPath,
 			fragShaderPath,
 			pipelineConfig,
-			IndirectDraw::getBindingDescriptionsShadow,
-			IndirectDraw::getAttributeDescriptionsShadow);
+			RenderBucket::getBindingDescriptionsShadow,
+			RenderBucket::getAttributeDescriptionsShadow);
 	}
 }
