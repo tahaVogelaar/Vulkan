@@ -1,90 +1,47 @@
-cmake_minimum_required(VERSION 4.0)
+cmake_minimum_required(VERSION 3.20)
 project(untitled4)
-
 set(CMAKE_CXX_STANDARD 20)
+
+# Dependencies
+find_package(Vulkan REQUIRED)
+find_package(glfw3 REQUIRED)
+find_library(SHADERC_LIB shaderc REQUIRED)
 
 # ImGui sources
 set(IMGUI_SOURCES
-        /home/taha/external//imgui/imgui.cpp
-        /home/taha/external/imgui/imgui_demo.cpp
-       /home/taha/external//imgui/imgui_draw.cpp
-       /home/taha/external//imgui/imgui_tables.cpp
-       /home/taha/external//imgui/imgui_widgets.cpp
-       /home/taha/external//imgui/backends/imgui_impl_glfw.cpp
-       /home/taha/external//imgui/backends/imgui_impl_vulkan.cpp
-        external/entt.hpp
-        src/lve_light.cpp
-        src/lve_light.h
-        src/lve_shadow_renderer.cpp
-        src/lve_shadow_renderer.h
-        src/coreRenderer.cpp
-        src/coreRenderer.h
+        external/imgui/imgui.cpp
+        external/imgui/imgui_demo.cpp
+        external/imgui/imgui_draw.cpp
+        external/imgui/imgui_tables.cpp
+        external/imgui/imgui_widgets.cpp
+        external/imgui/backends/imgui_impl_glfw.cpp
+        external/imgui/backends/imgui_impl_vulkan.cpp
 )
 
-# Collect all sources for the library (excluding main.cpp)
-file(GLOB_RECURSE MYLIB_SOURCES src/*.cpp)
+# Engine library
+file(GLOB_RECURSE ENGINE_SOURCES src/*.cpp)
+list(REMOVE_ITEM ENGINE_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
 
-# Include directories
-include_directories(
-        /home/taha/external/imgui
-        /home/taha/external/imgui/backends
+add_library(engine STATIC ${ENGINE_SOURCES})
+target_include_directories(engine PUBLIC
+        src
+        external
+        external/imgui
+        external/imgui/backends
+        external/assimp/include
 )
+target_link_libraries(engine PRIVATE Vulkan::Vulkan glfw ${SHADERC_LIB} z dl pthread)
 
-# Create a static library from all other cpp files
-add_library(mylib STATIC ${MYLIB_SOURCES}
-        src/Mesh.cpp
-        src/Mesh.h
-        src/lve_camera.cpp
-        src/lve_camera.hpp
-        src/Texture.cpp
-        src/Texture.h
-        external/stb_image.h
-        src/lve_frame_buffer.cpp
-        src/lve_frame_buffer.h
-        src/testFrameBuffers.h
-        src/lve_shadowMap.cpp
-        src/lve_shadowMap.h
-        external/entt.hpp
-        src/lve_light.cpp
-        src/lve_light.h
-        src/coreRenderer.cpp
-        src/coreRenderer.h
-        external/sky-models-master)
-
-
-# Include headers
-target_include_directories(mylib PUBLIC src)
-target_include_directories(mylib PUBLIC external/tinyobjloader)
-target_include_directories(mylib PUBLIC external)
-target_include_directories(mylib PUBLIC ${SHADERC_INCLUDE_DIRS})
-
-
-find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
-
-
-add_executable(untitled4 src/main.cpp
-        src/Texture.cpp
-        src/Texture.h
-        src/testFrameBuffers.h
-        ${IMGUI_SOURCES}
-        external/entt.hpp
-        src/lve_light.cpp
-        src/lve_light.h
-        src/coreRenderer.cpp
-        src/coreRenderer.h
-        external/sky-models-master
-)
-
-find_library(SHADERC_LIB shaderc REQUIRED)
-
-target_link_libraries(untitled4 PRIVATE
-        mylib
-        Vulkan::Vulkan
-        glfw
-        ${SHADERC_LIB}
+# Assimp static link (if not using find_package)
+set(ASSIMP_LIB "${CMAKE_SOURCE_DIR}/external/assimp/lib/libassimp.a")
+target_link_libraries(engine PRIVATE
+        ${ASSIMP_LIB}
+        z
+        dl
+        pthread
 )
 
 
-# Link the library
-target_link_libraries(untitled4 PRIVATE mylib)
+# Executable
+add_executable(untitled4 src/main.cpp ${IMGUI_SOURCES})
+target_link_libraries(untitled4 PRIVATE engine)

@@ -49,5 +49,5 @@ vec3 spotLight(int l)
 void main()
 {
 
-    outColor = vec4(spotLight(0), 1);
+    outColor = vec4(1, 1, 1, 1);
 }

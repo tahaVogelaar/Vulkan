@@ -67,7 +67,7 @@ namespace lve {
 	}
 
 	void SimpleRenderSystem::createShadowPipeline(VkRenderPass renderPass, const std::string &vertShaderPath,
-												const std::string &fragShaderPath)
+											const std::string &fragShaderPath)
 	{
 		assert(pipelineLayout != nullptr && "Cannot create pipeline before pipeline layout");
 

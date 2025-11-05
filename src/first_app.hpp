@@ -18,8 +18,9 @@
 #include "simple_render_system.hpp"
 #include "lve_shadowMap.h"
 #include "lve_shadow_renderer.h"
-#include  "coreRenderer.h"
-
+#include "coreRenderer.h"
+#include "fullScreenQuat.h"
+#include "ObjectLoader.h"
 
 
 namespace lve {
@@ -27,7 +28,7 @@ namespace lve {
 	public:
 		int WIDTH = 800;
 		int HEIGHT = 600;
-		uint32_t MAX_OBJECT_COUNT = 32;
+		uint32_t MAX_OBJECT_COUNT = 512;
 		FirstApp();
 		~FirstApp();
 
@@ -70,11 +71,16 @@ namespace lve {
 		std::unique_ptr<LveBuffer> pointLightBuffer;
 		VkExtent2D shadowExtent{2024, 2024};
 
+		// a
+		std::unique_ptr<FullScreenQuat> fullScreenQuat;
+		//std::string skyVert = "/home/taha/CLionProjects/untitled4/shaders/sky.vert", skyFrag = "/home/taha/CLionProjects/untitled4/shaders/sky.frag";
+
 		// objects
 		uint32_t objectCount = 0;
+		LoaderObject objectLoader;
 
 		// textures
-		std::vector<std::unique_ptr<VulkanTexture> > textures;
+		std::vector<std::unique_ptr<Material> > textures;
 
 		// note: order of declarations matters
 		std::unique_ptr<LveDescriptorPool> globalPool{}, ssobPool{};

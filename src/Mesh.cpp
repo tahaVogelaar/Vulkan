@@ -3,8 +3,6 @@
 #include "lve_utils.hpp"
 
 // libs
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 
@@ -13,7 +11,12 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
-#include <unordered_map>
+#include <unordered_set>
+
+
+
+
+
 
 RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO) :
 	lveDevice(device), objectSSBO(objectSSBO), MAX_DRAW(MAX_DRAW)
@@ -33,29 +36,22 @@ RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBu
 	);
 }
 
-void RenderBucket::createMeshes(const std::vector<std::string> &files)
+void RenderBucket::loadMeshes(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<dataStructureStuffIdk>& offsets)
 {
+	std::unordered_set<glm::vec3> aaa;
+	for (auto& v : vertices)
+	{
+		if (aaa.find(v.position) != aaa.end())
+			std::cout << v.position.x << ' ' << v.position.y << ' ' << v.position.z << '\n';
+		else
+			aaa.emplace(v.position);
+	}
+
+	this->offsets = offsets;
 	drawCommands.clear();
-	vertices.clear();
-	indices.clear();
-	builder.clear();
 
 	uint32_t indexCount = 0;
-	OBJECT_TYPES = 0;
-
-	for (std::string const file: files)
-	{
-		Builder b;
-		b.loadModel(file);
-		b.id = indexCount;
-
-		for (auto i: b.vertices) vertices.push_back(i);
-
-		for (auto i: b.indices) indices.push_back(i);
-		OBJECT_TYPES++;
-		builder.push_back(b);
-		indexCount++;
-	}
+	OBJECT_TYPES = offsets.size();
 
 	createVertexBuffers(vertices);
 	createIndexBuffers(indices);
@@ -88,9 +84,6 @@ void RenderBucket::render(VkCommandBuffer commandBuffer)
 void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 {
 	// stuff
-	uint32_t firstIndex = 0;
-	int32_t vertexOffset = 0;
-	uint32_t runningBaseInstance = 0;
 	drawCommands.clear();
 	drawCommands.reserve(OBJECT_TYPES);
 	sortedBucket.clear();
@@ -109,23 +102,20 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 	std::sort(sortedBucket.begin(), sortedBucket.end(),
 		[](const Object& a, const Object& b){ return a.materialId < b.materialId; });
 
+	uint32_t runningBaseInstance = 0;
 	for (int i = 0; i < OBJECT_TYPES; i++)
 	{
-		uint32_t instancesForThisMaterial = objectTypeIndex[i];
-
 		VkDrawIndexedIndirectCommand cmd{
-			static_cast<uint32_t>(builder[i].indices.size()),   // indexCount
-			instancesForThisMaterial,                  // instanceCount
-			firstIndex,                                // firstIndex
-			vertexOffset,                              // vertexOffset
-			runningBaseInstance                         // firstInstance
+			offsets[i].indexCount,   // number of indices for this mesh
+			objectTypeIndex[i],           // how many instances
+			offsets[i].indexOffset,  // offset in global index buffer
+			offsets[i].vertexOffset, // offset in global vertex buffer
+			runningBaseInstance
 		};
 		drawCommands.push_back(cmd);
 
-		// offsets
-		firstIndex += static_cast<uint32_t>(builder[i].indices.size());
-		vertexOffset += static_cast<int32_t>(builder[i].vertices.size());
-		runningBaseInstance += instancesForThisMaterial;
+		// offset
+		runningBaseInstance += objectTypeIndex[i];
 	}
 
 	updateSSBO(objectSSBOA);
@@ -158,7 +148,7 @@ void RenderBucket::updateSSBO(lve::LveBuffer& objectSSBOA)
  //
 void RenderBucket::createDrawCommand()
 {
-	VkDeviceSize bufferSize = 1 * sizeof(VkDrawIndexedIndirectCommand);
+	VkDeviceSize bufferSize = OBJECT_TYPES * sizeof(VkDrawIndexedIndirectCommand);
 
 	stagingBuffer->writeToBuffer((void *) drawCommands.data());
 
@@ -233,6 +223,7 @@ void RenderBucket::ensureBufferCapacity(uint32_t requiredCommandCount)
 	// swap and update capacity
 	drawCommandsBuffer = std::move(newBuffer);
 	MAX_DRAW = newCommandCapacity;
+	std::cout << "MAX DRAW: " << MAX_DRAW << '\n';
 }
 
 
@@ -242,10 +233,10 @@ void RenderBucket::ensureBufferCapacity(uint32_t requiredCommandCount)
 
 void RenderBucket::createVertexBuffers(const std::vector<Vertex> &vertices)
 {
-	vertexCount = static_cast<uint32_t>(vertices.size());
+	uint32_t vertexCount = static_cast<uint32_t>(vertices.size());
 	assert(vertexCount >= 3 && "Vertex count must be at least 3");
-	VkDeviceSize bufferSize = sizeof(vertices[0]) * vertexCount;
 	uint32_t vertexSize = sizeof(vertices[0]);
+	VkDeviceSize bufferSize = vertexSize * vertexCount;
 
 	lve::LveBuffer stagingBuffer{
 		lveDevice,
@@ -270,7 +261,7 @@ void RenderBucket::createVertexBuffers(const std::vector<Vertex> &vertices)
 
 void RenderBucket::createIndexBuffers(const std::vector<uint32_t> &indices)
 {
-	indexCount = static_cast<uint32_t>(indices.size());
+	uint32_t indexCount = static_cast<uint32_t>(indices.size());
 
 	VkDeviceSize bufferSize = sizeof(indices[0]) * indexCount;
 	uint32_t indexSize = sizeof(indices[0]);
@@ -296,83 +287,6 @@ void RenderBucket::createIndexBuffers(const std::vector<uint32_t> &indices)
 	lveDevice.copyBuffer(stagingBuffer.getBuffer(), indexBuffer->getBuffer(), bufferSize);
 }
 
-
-namespace std {
-	template<>
-	struct hash<Vertex> {
-		size_t operator()(Vertex const &vertex) const
-		{
-			size_t seed = 0;
-			lve::hashCombine(seed, vertex.position, vertex.color, vertex.normal, vertex.uv);
-			return seed;
-		}
-	};
-}; // namespace std
-
-
-void Builder::loadModel(const std::string &filepath)
-{
-	tinyobj::attrib_t attrib;
-	std::vector<tinyobj::shape_t> shapes;
-	std::vector<tinyobj::material_t> materials;
-	std::string warn, err;
-
-	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filepath.c_str()))
-	{
-		throw std::runtime_error(warn + err);
-	}
-
-	vertices.clear();
-	indices.clear();
-
-	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-	for (const auto &shape: shapes)
-	{
-		for (const auto &index: shape.mesh.indices)
-		{
-			Vertex vertex{};
-
-			if (index.vertex_index >= 0)
-			{
-				vertex.position = {
-					attrib.vertices[3 * index.vertex_index + 0],
-					attrib.vertices[3 * index.vertex_index + 1],
-					attrib.vertices[3 * index.vertex_index + 2],
-				};
-
-				vertex.color = {
-					attrib.colors[3 * index.vertex_index + 0],
-					attrib.colors[3 * index.vertex_index + 1],
-					attrib.colors[3 * index.vertex_index + 2],
-				};
-			}
-
-			if (index.normal_index >= 0)
-			{
-				vertex.normal = {
-					attrib.normals[3 * index.normal_index + 0],
-					attrib.normals[3 * index.normal_index + 1],
-					attrib.normals[3 * index.normal_index + 2],
-				};
-			}
-
-			if (index.texcoord_index >= 0)
-			{
-				vertex.uv = {
-					attrib.texcoords[2 * index.texcoord_index + 0],
-					attrib.texcoords[2 * index.texcoord_index + 1],
-				};
-			}
-
-			if (uniqueVertices.count(vertex) == 0)
-			{
-				uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-				vertices.push_back(vertex);
-			}
-			indices.push_back(uniqueVertices[vertex]);
-		}
-	}
-}
 
 glm::mat4 TransformComponent::mat4()
 {

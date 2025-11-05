@@ -32,6 +32,7 @@ struct MeshComponent {
 
 struct DefaultObjectData {
 	entt::entity parent = entt::null;
+	std::vector<entt::entity> children;
 	Handle handle;
 	bool dirty = true;
 };
@@ -43,7 +44,7 @@ public:
 
 	void renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDTH, int HEIGHT);
 	void syncToRenderBucket(VkDescriptorSet& descriptor, lve::LveBuffer& buffer);
-	void updateTransforms();
+	void updateAllTransforms();
 
 	// get stuff
 	entt::registry& getRegistery() {return registry; }
@@ -55,7 +56,8 @@ private:
 	void updateTransformRecursive(entt::entity entity, const glm::mat4& parentMatrix, bool parentDirty);
 
 	// imgui
-	void createObject();
+	void drawChildren(entt::entity entity);
+	void createObject(entt::entity parent);
 	void addLightComponent(entt::entity entity);
 	void removeLightComponent(entt::entity entity);
 	void deleteObject(entt::entity entity);

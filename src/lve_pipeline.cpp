@@ -19,12 +19,13 @@ namespace lve {
 		const std::string &vertFilepath,
 		const std::string &fragFilepath,
 		const PipelineConfigInfo &configInfo,
+		bool USEAA,
 		std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)(),
 		std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)())
 
 		: lveDevice{device}
 	{
-		createGraphicsPipeline(vertFilepath, fragFilepath, configInfo, BindingDescriptions, AttributeDescriptions);
+		createGraphicsPipeline(vertFilepath, fragFilepath, configInfo, USEAA, BindingDescriptions, AttributeDescriptions);
 	}
 
 	LvePipeline::~LvePipeline()
@@ -78,6 +79,7 @@ namespace lve {
 		const std::string &vertFilepath,
 		const std::string &fragFilepath,
 		const PipelineConfigInfo &configInfo,
+		bool USEAA,
 		std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)(),
 		std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)())
 	{
@@ -113,15 +115,26 @@ namespace lve {
 		shaderStages[1].pNext = nullptr;
 		shaderStages[1].pSpecializationInfo = nullptr;
 
+
 		std::vector<VkVertexInputBindingDescription> bindingDescriptions = BindingDescriptions();
 		std::vector<VkVertexInputAttributeDescription> attributeDescriptions = AttributeDescriptions();
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertexInputInfo.vertexAttributeDescriptionCount =
-				static_cast<uint32_t>(attributeDescriptions.size());
-		vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
-		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-		vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+		if (USEAA)
+		{
+			vertexInputInfo.vertexAttributeDescriptionCount =
+					static_cast<uint32_t>(attributeDescriptions.size());
+			vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+			vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+			vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+		}
+		else
+		{
+			vertexInputInfo.vertexAttributeDescriptionCount = 0;
+			vertexInputInfo.vertexBindingDescriptionCount = 0;
+			vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+			vertexInputInfo.pVertexBindingDescriptions = nullptr;
+		}
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

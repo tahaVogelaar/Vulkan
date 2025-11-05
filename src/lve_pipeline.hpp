@@ -38,6 +38,7 @@ namespace lve {
 			const std::string &vertFilepath,
 			const std::string &fragFilepath,
 			const PipelineConfigInfo &configInfo,
+			bool USEAA = true,
 			std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)() = RenderBucket::getBindingDescriptions,
 			std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)() = RenderBucket::getAttributeDescriptions);
 
@@ -65,6 +66,7 @@ namespace lve {
 			const std::string &vertFilepath,
 			const std::string &fragFilepath,
 			const PipelineConfigInfo &configInfo,
+			bool USEAA,
 			std::vector<VkVertexInputBindingDescription> (*BindingDescriptions)(),
 			std::vector<VkVertexInputAttributeDescription> (*AttributeDescriptions)());
 

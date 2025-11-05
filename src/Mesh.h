@@ -10,31 +10,7 @@
 #include <memory>
 #include <unordered_map>
 #include "entt.hpp"
-
-struct Vertex {
-	glm::vec3 position{};
-	glm::vec3 color{};
-	glm::vec3 normal{};
-	glm::vec2 uv{};
-
-	static std::vector<VkVertexInputBindingDescription> getBindingDescriptions();
-
-	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
-
-	bool operator==(const Vertex &other) const
-	{
-		return position == other.position && color == other.color && normal == other.normal &&
-				uv == other.uv;
-	}
-};
-
-struct Builder {
-	std::vector<Vertex> vertices{};
-	std::vector<uint32_t> indices{};
-	uint32_t id = 0;
-
-	void loadModel(const std::string &filepath);
-};
+#include "ObjectLoader.h"
 
 struct TransformComponent {
 	glm::vec3 translation{};
@@ -76,11 +52,10 @@ struct Handle {
 	uint32_t generation;
 };
 
-
 class RenderBucket {
 public:
 	RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO);
-	void createMeshes(const std::vector<std::string> &files);
+	void loadMeshes(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<dataStructureStuffIdk>& offsets);
 
 	Handle addInstance(BucketSendData &item);
 	void deleteInstance(Handle h);
@@ -109,15 +84,10 @@ private:
 	uint32_t OBJECT_TYPES = 2;
 
 	std::unique_ptr<lve::LveBuffer> vertexBuffer;
-	uint32_t vertexCount = 0;
 	std::unique_ptr<lve::LveBuffer> indexBuffer;
-	uint32_t indexCount = 0;
-
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-	std::vector<Builder> builder;
 	std::vector<VkDrawIndexedIndirectCommand> drawCommands;
 	std::unique_ptr<lve::LveBuffer> drawCommandsBuffer;
+	std::vector<dataStructureStuffIdk> offsets;
 
 	void createVertexBuffers(const std::vector<Vertex> &vertices);
 	void createIndexBuffers(const std::vector<uint32_t> &indices);

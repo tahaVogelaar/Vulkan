@@ -1,4 +1,5 @@
 #include "coreRenderer.h"
+#include <iostream>
 
 RenderSyncSystem::RenderSyncSystem(RenderBucket &bucket, lve::LveDevice &device,
 									lve::LveDescriptorSetLayout& descriptor) : renderBucket(bucket),
@@ -10,39 +11,64 @@ RenderSyncSystem::RenderSyncSystem(RenderBucket &bucket, lve::LveDevice &device,
 																		RenderBucket::getAttributeDescriptionsShadow);
 }
 
+void RenderSyncSystem::drawChildren(entt::entity entity)
+{
+	auto& data = registry.get<DefaultObjectData>(entity);
+	std::string objName = "Object " + std::to_string((uint32_t)entity);
+
+	ImGui::PushID((int)entity);
+
+	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+	if (data.children.empty())
+		flags |= ImGuiTreeNodeFlags_Leaf;
+	if (currentEntity == entity)
+		flags |= ImGuiTreeNodeFlags_Selected;
+
+	bool open = ImGui::TreeNodeEx(objName.c_str(), flags);
+
+	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+		currentEntity = entity;
+		enableEditor = true;
+	}
+
+	ImGui::SameLine();
+	std::string addBtn = "+##" + std::to_string((uint32_t)entity);
+	if (ImGui::Button(addBtn.c_str()))
+		createObject(entity);
+
+	if (open)
+	{
+		for (auto child : data.children)
+			if (child != entt::null)
+				drawChildren(child);
+		ImGui::TreePop();
+	}
+
+	ImGui::PopID();
+}
+
 void RenderSyncSystem::renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDTH, int HEIGHT)
 {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	// object list
-
 	ImGui::Begin("Objects", nullptr,
-				ImGuiWindowFlags_::ImGuiWindowFlags_NoResize | ImGuiWindowFlags_::ImGuiWindowFlags_NoCollapse |
-				ImGuiWindowFlags_::ImGuiWindowFlags_NoMove);
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoCollapse |
+		ImGuiWindowFlags_NoMove);
 	ImGui::SetWindowSize(ImVec2(WIDTH / 4.f, HEIGHT));
 	ImGui::SetWindowPos(ImVec2(0, 0));
 
-	if (ImGui::Button("Create Object", ImVec2(WIDTH / 4. - 15, 20)))
-		createObject();
+	if (ImGui::Button("Create Object", ImVec2(WIDTH / 4.f - 15, 20)))
+		createObject(entt::null);
 
-	int count = 0;
-	auto view = registry.view<TransformComponent>();
-	for (auto [entity, transform]: view.each())
+	auto view = registry.view<DefaultObjectData>();
+	for (auto [entity, data] : view.each())
 	{
-		std::string objName = "Object " + std::to_string(static_cast<unsigned long long>(entity));
-		if (ImGui::Button(objName.c_str(), ImVec2(WIDTH / 4.f - 15, 20)))
-		{
-			if (currentEntity == entity)
-				enableEditor = !enableEditor;
-			else
-			{
-				currentEntity = entity;
-				enableEditor = true;
-			}
-		}
-		count++;
+		if (data.parent != entt::null) continue;
+
+		drawChildren(entity);
 	}
 
 	ImGui::End();
@@ -133,15 +159,30 @@ void RenderSyncSystem::renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDT
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 }
 
-void RenderSyncSystem::deleteObject(entt::entity entity)
-{
-	auto &data = registry.get<DefaultObjectData>(currentEntity);
+void RenderSyncSystem::deleteObject(entt::entity entity) {
+	auto& data = registry.get<DefaultObjectData>(entity);
+
+	// Remove self from parent’s children list
+	if (data.parent != entt::null) {
+		auto& parentData = registry.get<DefaultObjectData>(data.parent);
+		parentData.children.erase(
+			std::remove(parentData.children.begin(), parentData.children.end(), entity),
+			parentData.children.end()
+		);
+	}
+
+	// Recursively delete children
+	for (auto child : data.children) {
+		if (registry.valid(child))
+			deleteObject(child);
+	}
+
 	renderBucket.deleteInstance(data.handle);
 	registry.destroy(entity);
 }
 
 
-void RenderSyncSystem::createObject()
+void RenderSyncSystem::createObject(entt::entity parent)
 {
 	entt::entity e = registry.create();
 	TransformComponent& a = registry.emplace<TransformComponent>(e);
@@ -150,11 +191,17 @@ void RenderSyncSystem::createObject()
 	BucketSendData data{};
 	data.model = a.mat4();
 	data.materialId = 0;
-	data.entity = static_cast<entt::entity>(e);
-	data.parent = static_cast<entt::entity>(entt::null);
+	data.entity = e;
+	data.parent = parent;
 	Handle handle = renderBucket.addInstance(data);
 
-	registry.emplace<DefaultObjectData>(e, entt::null, handle, false);
+	DefaultObjectData aaAA{};
+	aaAA.parent = parent;
+	aaAA.handle = handle;
+	aaAA.dirty = false;
+	registry.emplace<DefaultObjectData>(e, aaAA);
+	if (parent != entt::null)
+		registry.get<DefaultObjectData>(parent).children.push_back(e);
 }
 
 void RenderSyncSystem::addLightComponent(entt::entity entity)
@@ -199,27 +246,20 @@ void RenderSyncSystem::syncToRenderBucket(VkDescriptorSet& descriptor, lve::LveB
 	dirtyLight.clear();
 }
 
-void RenderSyncSystem::updateTransforms()
+void RenderSyncSystem::updateAllTransforms()
 {
 	auto view = registry.view<TransformComponent, DefaultObjectData>();
 
 	// Find root entities (no parent)
 	for (auto [entity, transform, meta]: view.each())
-	{
 		if (meta.parent == entt::null)
-		{
 			updateTransformRecursive(entity, glm::mat4(1.0f), true);
-
-			auto &mesh = registry.get<MeshComponent>(entity);
-			renderBucket.get(meta.handle)->model = transform.worldMatrix;
-			renderBucket.get(meta.handle)->materialId = mesh.materialId;
-		}
-	}
 }
 
 void RenderSyncSystem::updateTransformRecursive(entt::entity entity, const glm::mat4 &parentMatrix, bool parentDirty)
 {
 	auto &transform = registry.get<TransformComponent>(entity);
+	auto& data = registry.get<DefaultObjectData>(entity);
 
 	bool dirty = transform.dirty || parentDirty;
 
@@ -227,15 +267,14 @@ void RenderSyncSystem::updateTransformRecursive(entt::entity entity, const glm::
 	{
 		transform.worldMatrix = parentMatrix * transform.mat4();
 		transform.dirty = false;
+
+		auto &mesh = registry.get<MeshComponent>(entity);
+		renderBucket.get(data.handle)->model = transform.worldMatrix;
+		renderBucket.get(data.handle)->materialId = mesh.materialId;
 	}
 
 	// Update children
-	auto view = registry.view<DefaultObjectData>();
-	for (auto [child, cmeta]: view.each())
-	{
-		if (cmeta.parent == entity)
-		{
-			updateTransformRecursive(child, transform.worldMatrix, dirty);
-		}
+	for (auto child : data.children) {
+		updateTransformRecursive(child, transform.worldMatrix, dirty);
 	}
 }

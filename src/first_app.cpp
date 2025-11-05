@@ -17,39 +17,6 @@
 #include <random>
 
 namespace lve {
-	FirstApp::FirstApp()
-	{
-		globalPool = LveDescriptorPool::Builder(lveDevice)
-				.setMaxSets(LveSwapChain::MAX_FRAMES_IN_FLIGHT)
-				// global ubo
-				.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-							LveSwapChain::MAX_FRAMES_IN_FLIGHT)
-				// game objects
-				.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1)
-
-				// lights
-				.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1)
-
-				// bindless textures
-				.setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT)
-				.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-							1000)
-
-				.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-							1)
-
-				.build();
-
-		loadGameObjects();
-		buildPreDescriptor();
-		buildDescriptors();
-		build();
-		initImGui();
-	}
-
-	FirstApp::~FirstApp()
-	{
-	}
 
 	void FirstApp::run()
 	{
@@ -68,6 +35,7 @@ namespace lve {
 			{
 				frameIndex = lveRenderer.getFrameIndex();
 
+				fullScreenQuat->draw(commandBuffer, frameIndex);
 				update(commandBuffer);
 				//updateShadow();
 				render(commandBuffer);
@@ -97,7 +65,7 @@ namespace lve {
 			lastUpdate1 = currentTime;
 		}
 
-		renderSyncSystem->updateTransforms();
+		renderSyncSystem->updateAllTransforms();
 		renderSyncSystem->syncToRenderBucket(globalDescriptorSets[frameIndex], *pointLightBuffer);
 		renderBucket.update(deltaTime, *drawSSBO);
 	}
@@ -147,6 +115,43 @@ namespace lve {
 	}
 
 
+
+
+	// init
+	FirstApp::FirstApp()
+	{
+		globalPool = LveDescriptorPool::Builder(lveDevice)
+				.setMaxSets(LveSwapChain::MAX_FRAMES_IN_FLIGHT)
+				// global ubo
+				.addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+							LveSwapChain::MAX_FRAMES_IN_FLIGHT)
+				// game objects
+				.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1)
+
+				// lights
+				.addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1)
+
+				// bindless textures
+				.setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT)
+				.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+							1000)
+
+				.addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+							1)
+
+				.build();
+
+		loadGameObjects();
+		buildPreDescriptor();
+		buildDescriptors();
+		build();
+		initImGui();
+	}
+
+	FirstApp::~FirstApp()
+	{
+	}
+
 	void FirstApp::buildPreDescriptor()
 	{
 	}
@@ -176,14 +181,6 @@ namespace lve {
 
 		// create Texture
 		std::vector<VkDescriptorImageInfo> imageInfos;
-		for (int i = 0; i < textures.size(); i++)
-		{
-			VkDescriptorImageInfo imageInfo{};
-			imageInfo.sampler = textures[i]->getSampler();
-			imageInfo.imageView = textures[i]->getImageView();
-			imageInfo.imageLayout = textures[i]->getImageLayout();
-			imageInfos.emplace_back(imageInfo);
-		}
 
 		// setup layout
 		globalSetLayout = LveDescriptorSetLayout::Builder(lveDevice)
@@ -212,7 +209,7 @@ namespace lve {
 					.writeBuffer(0, &bufferInfo)
 					.writeBuffer(1, &drawBufferInfo)
 					.writeBuffer(2, &pointLightBufferInfo)
-					.writeImages(3, imageInfos.data(), static_cast<uint32_t>(imageInfos.size()))
+					//.writeImages(3, imageInfos.data(), static_cast<uint32_t>(imageInfos.size()))
 					.build(globalDescriptorSets[i]);
 		}
 	}
@@ -227,6 +224,13 @@ namespace lve {
 
 		renderSyncSystem = std::make_unique<RenderSyncSystem>(
 			renderBucket, lveDevice, *globalSetLayout.get());
+
+		std::string AAa = "/home/taha/CLionProjects/untitled4/shaders/sky.vert";
+		std::string AAAa = "/home/taha/CLionProjects/untitled4/shaders/sky.frag";
+		fullScreenQuat = std::make_unique<FullScreenQuat>(
+			lveDevice, *lveRenderer.getSwapChain(), VkExtent2D(WIDTH, HEIGHT),
+			globalSetLayout->getDescriptorSetLayout(), AAa, AAAa
+		 );
 	}
 
 	VkCommandBuffer FirstApp::startFrame()
@@ -250,15 +254,9 @@ namespace lve {
 	{
 		std::vector<std::string> files;
 		files.emplace_back("/home/taha/CLionProjects/untitled4/models/smooth_vase.obj");
-		files.emplace_back("/home/taha/CLionProjects/untitled4/models/cube.obj");
-		renderBucket.createMeshes(files);
-
-		files.clear();
-		files.emplace_back("/home/taha/Pictures/Screenshots/Screenshot from 2025-09-21 14-39-26.png");
-		files.emplace_back("/home/taha/Pictures/why-do-people-never-talk-about-fc4-v0-6cimycz1faif1.jpg");
-
-		for (auto const &f: files)
-			textures.push_back(std::make_unique<VulkanTexture>(lveDevice, f));
+		//files.emplace_back("/home/taha/CLionProjects/untitled4/models/cube.obj");
+		objectLoader.loadScene(files[0]);
+		renderBucket.loadMeshes(*objectLoader.getVertices(), *objectLoader.getIndices(), *objectLoader.getOffsets());
 	}
 
 
