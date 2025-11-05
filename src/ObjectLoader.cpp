@@ -61,14 +61,13 @@ void LoaderObject::processMesh(aiMesh* mesh, const aiScene* scene) {
 		    vertex.uv = {0.0f, 0.0f};
 
 		if (uniqueVertices.find(vertex) == uniqueVertices.end()) {
-		    uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+		    uniqueVertices.emplace(vertex, static_cast<uint32_t>(vertices.size()));
 		    vertices.push_back(vertex);
 		    a.vertexCount++;
 		}
 		indices.push_back(uniqueVertices[vertex]);
 		a.indexCount++;
 	}
-
 
 	imBadAtNamingStuff.push_back(a);
 }

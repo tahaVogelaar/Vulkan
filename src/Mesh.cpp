@@ -38,16 +38,8 @@ RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBu
 
 void RenderBucket::loadMeshes(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<dataStructureStuffIdk>& offsets)
 {
-	std::unordered_set<glm::vec3> aaa;
-	for (auto& v : vertices)
-	{
-		if (aaa.find(v.position) != aaa.end())
-			std::cout << v.position.x << ' ' << v.position.y << ' ' << v.position.z << '\n';
-		else
-			aaa.emplace(v.position);
-	}
-
 	this->offsets = offsets;
+	OBJECT_TYPES = offsets.size();
 	drawCommands.clear();
 
 	uint32_t indexCount = 0;
@@ -102,20 +94,26 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 	std::sort(sortedBucket.begin(), sortedBucket.end(),
 		[](const Object& a, const Object& b){ return a.materialId < b.materialId; });
 
+	uint32_t firstIndex = 0;
+	int32_t vertexOffset = 0;
 	uint32_t runningBaseInstance = 0;
 	for (int i = 0; i < OBJECT_TYPES; i++)
 	{
+		uint32_t instancesForThisMaterial = objectTypeIndex[i];
+
 		VkDrawIndexedIndirectCommand cmd{
-			offsets[i].indexCount,   // number of indices for this mesh
-			objectTypeIndex[i],           // how many instances
-			offsets[i].indexOffset,  // offset in global index buffer
-			offsets[i].vertexOffset, // offset in global vertex buffer
-			runningBaseInstance
+			static_cast<uint32_t>(offsets[i].indexCount),   // indexCount
+			instancesForThisMaterial,                  // instanceCount
+			firstIndex,                                // firstIndex
+			vertexOffset,                              // vertexOffset
+			runningBaseInstance                         // firstInstance
 		};
 		drawCommands.push_back(cmd);
 
-		// offset
-		runningBaseInstance += objectTypeIndex[i];
+		// offsets
+		firstIndex += static_cast<uint32_t>(offsets[i].indexCount);
+		vertexOffset += static_cast<int32_t>(offsets[i].vertexCount);
+		runningBaseInstance += instancesForThisMaterial;
 	}
 
 	updateSSBO(objectSSBOA);

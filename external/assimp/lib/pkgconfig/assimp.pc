@@ -1,0 +1,9 @@
+libdir=/home/taha/assimp_static/lib
+includedir=/home/taha/assimp_static/include
+
+Name: Assimp
+Description: Import various well-known 3D model formats in an uniform manner.
+Version: 6.0.2
+Libs: -L${libdir} -lassimp
+Libs.private: -lstdc++ -loptimized;/usr/lib/x86_64-linux-gnu/libz.a;debug;/usr/lib/x86_64-linux-gnu/libz.a
+Cflags: -I${includedir}
