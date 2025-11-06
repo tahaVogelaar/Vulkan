@@ -35,7 +35,7 @@ namespace lve {
 			{
 				frameIndex = lveRenderer.getFrameIndex();
 
-				fullScreenQuat->draw(commandBuffer, frameIndex);
+				//fullScreenQuat->draw(commandBuffer, frameIndex);
 				update(commandBuffer);
 				//updateShadow();
 				render(commandBuffer);
@@ -253,10 +253,10 @@ namespace lve {
 	void FirstApp::loadGameObjects()
 	{
 		std::vector<std::string> files;
-		files.emplace_back("/home/taha/CLionProjects/untitled4/models/smooth_vase.obj");
+		files.emplace_back("/home/taha/Documents/objects/Untitled.gltf");
 		//files.emplace_back("/home/taha/CLionProjects/untitled4/models/cube.obj");
-		objectLoader.loadScene(files[0]);
-		renderBucket.loadMeshes(*objectLoader.getVertices(), *objectLoader.getIndices(), *objectLoader.getOffsets());
+		objectLoader.loadScene(files[0].c_str());
+		renderBucket.loadMeshes(objectLoader.getBuilders());
 	}
 
 

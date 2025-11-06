@@ -13,11 +13,6 @@
 #include <iostream>
 #include <unordered_set>
 
-
-
-
-
-
 RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO) :
 	lveDevice(device), objectSSBO(objectSSBO), MAX_DRAW(MAX_DRAW)
 {
@@ -36,14 +31,22 @@ RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBu
 	);
 }
 
-void RenderBucket::loadMeshes(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<dataStructureStuffIdk>& offsets)
+void RenderBucket::loadMeshes(std::vector<Builder>& builders)
 {
-	this->offsets = offsets;
-	OBJECT_TYPES = offsets.size();
+	this->builder = builders;
 	drawCommands.clear();
+	vertices.clear();
+	indices.clear();
+	builder.clear();
 
 	uint32_t indexCount = 0;
-	OBJECT_TYPES = offsets.size();
+	OBJECT_TYPES = 0;
+
+	for (auto i: builder[0].vertices) vertices.push_back(i);
+
+	for (auto i: builder[0].indices) indices.push_back(i);
+	OBJECT_TYPES++;
+	indexCount++;
 
 	createVertexBuffers(vertices);
 	createIndexBuffers(indices);
@@ -102,7 +105,7 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 		uint32_t instancesForThisMaterial = objectTypeIndex[i];
 
 		VkDrawIndexedIndirectCommand cmd{
-			static_cast<uint32_t>(offsets[i].indexCount),   // indexCount
+			static_cast<uint32_t>(builder[i].indices.size()),   // indexCount
 			instancesForThisMaterial,                  // instanceCount
 			firstIndex,                                // firstIndex
 			vertexOffset,                              // vertexOffset
@@ -111,8 +114,8 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 		drawCommands.push_back(cmd);
 
 		// offsets
-		firstIndex += static_cast<uint32_t>(offsets[i].indexCount);
-		vertexOffset += static_cast<int32_t>(offsets[i].vertexCount);
+		firstIndex += static_cast<uint32_t>(builder[i].indices.size());
+		vertexOffset += static_cast<int32_t>(builder[i].vertices.size());
 		runningBaseInstance += instancesForThisMaterial;
 	}
 

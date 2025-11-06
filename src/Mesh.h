@@ -55,7 +55,7 @@ struct Handle {
 class RenderBucket {
 public:
 	RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO);
-	void loadMeshes(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<dataStructureStuffIdk>& offsets);
+	void loadMeshes(std::vector<Builder>& builders);
 
 	Handle addInstance(BucketSendData &item);
 	void deleteInstance(Handle h);
@@ -71,6 +71,10 @@ public:
 	std::unique_ptr<lve::LveBuffer> stagingBuffer;
 
 private:
+	std::vector<Builder> builder;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
 	std::map<uint32_t, uint32_t> objectTypeIndex; // this is the batch it creates every
 	std::vector<Object> bucket; // holds drawable objects (unsorted)
 	std::vector<Object> sortedBucket; // sorts bucket every frame
@@ -83,11 +87,13 @@ private:
 	uint32_t MAX_DRAW;
 	uint32_t OBJECT_TYPES = 2;
 
+	std::vector<Vertex> totalVertex;
+	std::vector<uint32_t> totalIndex;
+
 	std::unique_ptr<lve::LveBuffer> vertexBuffer;
 	std::unique_ptr<lve::LveBuffer> indexBuffer;
 	std::vector<VkDrawIndexedIndirectCommand> drawCommands;
 	std::unique_ptr<lve::LveBuffer> drawCommandsBuffer;
-	std::vector<dataStructureStuffIdk> offsets;
 
 	void createVertexBuffers(const std::vector<Vertex> &vertices);
 	void createIndexBuffers(const std::vector<uint32_t> &indices);

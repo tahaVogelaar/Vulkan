@@ -4,17 +4,17 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
-
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <Texture.h>
-
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
+#include "lve_utils.hpp"
+#include "json.hpp"
+#include "fastgltf/core.hpp"
 
 #include <vector>
 
-#include "lve_utils.hpp"
-
+using json = nlohmann::json;
 
 struct Vertex {
 	glm::vec3 position{0, 0, 0};
@@ -22,6 +22,11 @@ struct Vertex {
 	glm::vec3 normal{0, 0, 0};
 	glm::vec2 uv{0, 0};
 	Vertex() = default;
+	Vertex(glm::vec3& p, glm::vec3& c, glm::vec3& n, glm::vec2& UV) :
+	position(p), normal(n), color(c), uv(UV)
+	{
+
+	}
 
 	static std::vector<VkVertexInputBindingDescription> getBindingDescriptions();
 
@@ -61,13 +66,20 @@ namespace std {
 	};
 }
 
-struct dataStructureStuffIdk {
-	int id = 0;
-	uint32_t vertexCount = 0;
+struct Builder {
+	uint32_t ID = 0;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 	int32_t vertexOffset = 0;
-	uint32_t indexCount = 0;
 	uint32_t indexOffset = 0;
 };
+
+/*struct Structure {
+	uint32_t ID = 0;
+	Structure* parent;
+	std::vector<Structure> childeren;
+	TransformComponent transform;
+};*/
 
 struct TextureLoader {
 	std::string path;
@@ -80,20 +92,52 @@ public:
 	~LoaderObject() = default;
 
 	void loadASingleObject();
-	void loadScene(std::string& path);
-	std::vector<Vertex>* getVertices() { return &vertices; };
-	std::vector<uint32_t>* getIndices() { return &indices; };
-	std::vector<dataStructureStuffIdk>* getOffsets() { return &imBadAtNamingStuff; };
+	void loadScene(const char* file);
+	std::vector<Builder>& getBuilders() { return builders; }
 private:
-	void processMesh(aiMesh* mesh, const aiScene* scene);
-	void processNode(aiNode* node, const aiScene* scene);
-
 	// for gpu memory
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
+	std::vector<Builder> builders;
+	uint32_t totalVertexOffset = 0, totalIndexOffset = 0;
 
-	std::vector<dataStructureStuffIdk> imBadAtNamingStuff;
 	std::vector<Material> materials;
 	std::vector<VulkanTexture> textures;
-	Assimp::Importer importer;
+	const char* file;
+	std::vector<unsigned char> data;
+
+	json JSON;
+
+	// Loads a single mesh by its index
+	void loadMesh(unsigned int indMesh);
+
+	// Traverses a node recursively, so it essentially traverses all connected nodes
+	void traverseNode(unsigned int nextNode, glm::mat4 matrix = glm::mat4(1.0f));
+
+	// Gets the binary data from a file
+	std::vector<unsigned char> getData();
+	// Interprets the binary data into floats, indices, and textures
+	std::vector<float> getFloats(json accessor);
+	std::vector<uint32_t> getIndices(json accessor);
+	//std::vector<Texture> getTextures();
+
+	// Helps with the assembly from above by grouping floats
+	std::vector<Vertex> assembleVertices
+	(
+		std::vector<glm::vec3> positions,
+		std::vector<glm::vec3> normals,
+		std::vector<glm::vec2> texUVs
+	);
+
+	glm::vec3 make_vec3(float a[3])
+	{
+		return glm::vec3(a[0], a[1], a[2]);
+	}
+
+	glm::quat make_quat(float a[4])
+	{
+		return glm::quat(a[0], a[1], a[2], a[3]);
+	}
+
+	std::vector<glm::vec2> groupFloatsVec2(std::vector<float> floatVec);
+	std::vector<glm::vec3> groupFloatsVec3(std::vector<float> floatVec);
+	std::vector<glm::vec4> groupFloatsVec4(std::vector<float> floatVec);
 };
