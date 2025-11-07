@@ -18,6 +18,16 @@
 
 namespace lve {
 
+	void FirstApp::loadGameObjects()
+	{
+		std::vector<std::string> files;
+		files.emplace_back("/home/taha/CLionProjects/untitled4/models/test1/New_Sponza_001.gltf");
+		files.emplace_back("/home/taha/CLionProjects/untitled4/models/test.gltf");
+		//objectLoader.loadScene(files[0].c_str());
+		objectLoader.loadScene(files[1].c_str());
+		renderBucket.loadMeshes(objectLoader.getBuilders());
+	}
+
 	void FirstApp::run()
 	{
 		while (!lveWindow.shouldClose())
@@ -47,7 +57,6 @@ namespace lve {
 
 		vkDeviceWaitIdle(lveDevice.device());
 	}
-
 
 	void FirstApp::update(VkCommandBuffer &commandBuffer)
 	{
@@ -222,7 +231,7 @@ namespace lve {
 		);
 
 		renderSyncSystem = std::make_unique<RenderSyncSystem>(
-			renderBucket, lveDevice, *globalSetLayout.get());
+			renderBucket, lveDevice, *globalSetLayout.get(), objectLoader);
 
 		std::string AAa = "/home/taha/CLionProjects/untitled4/shaders/sky.vert";
 		std::string AAAa = "/home/taha/CLionProjects/untitled4/shaders/sky.frag";
@@ -247,14 +256,6 @@ namespace lve {
 	{
 		lveRenderer.endSwapChainRenderPass(commandBuffer);
 		lveRenderer.endFrame();
-	}
-
-	void FirstApp::loadGameObjects()
-	{
-		std::vector<std::string> files;
-		files.emplace_back("/home/taha/CLionProjects/untitled4/models/vase.glb");
-		objectLoader.loadScene(files[0].c_str());
-		renderBucket.loadMeshes(objectLoader.getBuilders());
 	}
 
 

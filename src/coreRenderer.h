@@ -39,7 +39,7 @@ struct DefaultObjectData {
 
 class RenderSyncSystem {
 public:
-	RenderSyncSystem(RenderBucket& bucket, lve::LveDevice& device, lve::LveDescriptorSetLayout& descriptor);
+	RenderSyncSystem(RenderBucket& bucket, lve::LveDevice& device, lve::LveDescriptorSetLayout& descriptor, LoaderObject& objectLoader);
 	~RenderSyncSystem() = default;
 
 	void renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDTH, int HEIGHT);
@@ -57,7 +57,7 @@ private:
 
 	// imgui
 	void drawChildren(entt::entity entity);
-	void createObject(entt::entity parent);
+	void createObject(entt::entity parent, int32_t object = -1);
 	void addLightComponent(entt::entity entity);
 	void removeLightComponent(entt::entity entity);
 	void deleteObject(entt::entity entity);
@@ -66,6 +66,7 @@ private:
 	entt::registry registry;
 	RenderBucket& renderBucket;
 	lve::LveDevice& device;
+	LoaderObject& objectLoader;
 
 	// dirty bucket
 	std::vector<entt::entity> dirtyLight;

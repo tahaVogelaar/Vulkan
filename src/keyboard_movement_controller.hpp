@@ -8,9 +8,9 @@ struct GlobalUbo {
 	glm::mat4 view;
 	glm::mat4 proj;
 	glm::mat4 projView;
-	alignas(16) glm::vec3 camPos;
-	alignas(16) glm::vec3 rotation;
-	alignas(16) glm::vec3 forward;
+	alignas(16) glm::vec3 camPos = glm::vec3(0);
+	alignas(16) glm::vec3 rotation = glm::vec3(0);
+	alignas(16) glm::vec3 forward = glm::vec3(0);
 };
 
 namespace lve {

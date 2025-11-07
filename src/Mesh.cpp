@@ -38,13 +38,11 @@ void RenderBucket::loadMeshes(std::vector<Builder>& builders)
 	vertices.clear();
 	indices.clear();
 
-	uint32_t indexCount = 0;
 	OBJECT_TYPES = 0;
 
-	for (auto& b: builder)
-	{
-		for (auto i: b.vertices) vertices.push_back(i);
-		for (auto i: b.indices) indices.push_back(i);
+	for (auto& b : builders) {
+		for (auto& v : b.vertices) vertices.push_back(v);
+		for (auto i : b.indices) indices.push_back(i);
 		OBJECT_TYPES++;
 	}
 
@@ -118,12 +116,6 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 		firstIndex += static_cast<uint32_t>(builder[i].indices.size());
 		vertexOffset += static_cast<int32_t>(builder[i].vertices.size());
 		runningBaseInstance += instancesForThisMaterial;
-
-		/*std::cout << builder[i].indices.size() << '\n' <<
-		instancesForThisMaterial << '\n' <<
-		firstIndex << '\n' <<
-		vertexOffset << '\n' <<
-		runningBaseInstance << "\n\n";*/
 	}
 
 	updateSSBO(objectSSBOA);
@@ -172,8 +164,8 @@ void RenderBucket::deleteInstance(Handle h)
 }
 
 Handle RenderBucket::addInstance( BucketSendData& item) {
-	Object o{ .model = item.model, .materialId = item.materialId };
-	CpuObject c{ .entity = item.entity, .parent = item.parent };
+	Object o{ item.model, item.materialId };
+	CpuObject c{ item.entity, item.parent };
 
 	uint32_t index = 0;
 	if (!freeList.empty()) {

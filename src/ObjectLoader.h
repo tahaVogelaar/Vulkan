@@ -76,12 +76,28 @@ struct Builder {
 	uint32_t indexOffset = 0;
 };
 
-/*struct Structure {
-	uint32_t ID = 0;
-	Structure* parent;
-	std::vector<Structure> childeren;
+struct TransformComponent {
+	glm::vec3 translation{};
+	glm::vec3 rotation{};
+	glm::vec3 scale{1.f, 1.f, 1.f};
+	glm::mat4 worldMatrix{1.0f};
+	bool dirty = true;
+
+	// Matrix corrsponds to Translate * Ry * Rx * Rz * Scale
+	// Rotations correspond to Tait-bryan angles of Y(1), X(2), Z(3)
+	// https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
+	glm::mat4 mat4();
+
+	glm::mat3 normalMatrix();
+};
+
+struct Structure {
+	int32_t ID = 0;
+	int32_t index = -1, parent = -1;
+	std::vector<int32_t> childeren;
 	TransformComponent transform;
-};*/
+	std::string name;
+};
 
 struct TextureLoader {
 	std::string path;
@@ -95,14 +111,26 @@ public:
 
 	void loadASingleObject();
 	void loadScene(const std::filesystem::path& filePath);
+
 	std::vector<Builder>& getBuilders() { return builders; }
+	std::vector<Structure>& getStructures() {return structures; }
+
+	glm::vec3 mat4ToPosition(const glm::mat4& matrix);
+	glm::vec3 mat4ToRotation(const glm::mat4& matrix);
+	glm::vec3 mat4ToRotation(const glm::mat4& matrix, const glm::vec3& scale);
+	glm::vec3 mat4ToScale(const glm::mat4& matrix);
+	glm::vec3 mat4ToScale(const glm::mat4& matrix, const glm::vec3& scale);
+	glm::quat mat4ToQuaternion(const glm::mat4& matrix);
+	glm::quat mat4ToQuaternion(const glm::mat4& matrix, const glm::vec3& scale);
+	glm::vec3 quaternionToVec3(const glm::quat& v);
+	glm::quat vec3ToQuaternion(const glm::vec3& v);
 private:
 	// for gpu memory
 	std::vector<Builder> builders;
-	uint32_t totalVertexOffset = 0, totalIndexOffset = 0;
+	std::vector<Structure> structures;
 
 	// Loads a single mesh by its index
-	void processMesh(fastgltf::Asset &asset, const fastgltf::Mesh &mesh);
+	int32_t processMesh(fastgltf::Asset &asset, const fastgltf::Mesh &mesh);
 	// Traverses a node recursively, so it essentially traverses all connected nodes
-	void processNode(fastgltf::Asset& asset, const fastgltf::Node& node);
+	int32_t processNode(fastgltf::Asset& asset, const fastgltf::Node& node, int32_t parentStructure);
 };

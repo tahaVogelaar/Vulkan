@@ -65,6 +65,7 @@ namespace lve {
 		GlobalUbo ubo;
 		std::unique_ptr<LveBuffer> drawSSBO; // ssbo
 		RenderBucket renderBucket{lveDevice, MAX_OBJECT_COUNT, *drawSSBO};
+		LoaderObject objectLoader;
 		std::unique_ptr<RenderSyncSystem> renderSyncSystem;
 
 		// light
@@ -77,7 +78,6 @@ namespace lve {
 
 		// objects
 		uint32_t objectCount = 0;
-		LoaderObject objectLoader;
 
 		// textures
 		std::vector<std::unique_ptr<Material> > textures;

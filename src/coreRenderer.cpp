@@ -2,8 +2,8 @@
 #include <iostream>
 
 RenderSyncSystem::RenderSyncSystem(RenderBucket &bucket, lve::LveDevice &device,
-									lve::LveDescriptorSetLayout& descriptor) : renderBucket(bucket),
-	device(device)
+									lve::LveDescriptorSetLayout& descriptor, LoaderObject& objectLoader) :
+renderBucket(bucket), device(device), objectLoader(objectLoader)
 {
 	pointShadowRenderer = std::make_unique<lve::LvePointShadowRenderer>(device, shadowVert, shadowFrag,
 																		descriptor.getDescriptorSetLayout(),
@@ -60,8 +60,28 @@ void RenderSyncSystem::renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDT
 	ImGui::SetWindowSize(ImVec2(WIDTH / 4.f, HEIGHT));
 	ImGui::SetWindowPos(ImVec2(0, 0));
 
+	static bool menuOpen = false;
 	if (ImGui::Button("Create Object", ImVec2(WIDTH / 4.f - 15, 20)))
-		createObject(entt::null);
+		menuOpen = !menuOpen; // toggle open/close
+
+
+	static int selectedItem = -1;
+	if (menuOpen) {
+		ImGui::BeginChild("MenuList", ImVec2(150, 0), true);
+
+		for (size_t i = 0; i < objectLoader.getStructures().size(); i++)
+		{
+			if (objectLoader.getStructures()[i].parent != -1) continue;
+			if (ImGui::Button(objectLoader.getStructures()[i].name.c_str()))
+			{
+				createObject(entt::null, objectLoader.getStructures()[i].index);
+				menuOpen = false;
+			}
+		}
+
+		ImGui::EndChild();
+	}
+
 
 	auto view = registry.view<DefaultObjectData>();
 	for (auto [entity, data] : view.each())
@@ -182,15 +202,15 @@ void RenderSyncSystem::deleteObject(entt::entity entity) {
 }
 
 
-void RenderSyncSystem::createObject(entt::entity parent)
+void RenderSyncSystem::createObject(entt::entity parent, int32_t object)
 {
 	entt::entity e = registry.create();
 	TransformComponent& a = registry.emplace<TransformComponent>(e);
-	registry.emplace<MeshComponent>(e, 0);
+	registry.emplace<MeshComponent>(e, objectLoader.getStructures()[object].ID);
 
 	BucketSendData data{};
 	data.model = a.mat4();
-	data.materialId = 0;
+	data.materialId = objectLoader.getStructures()[object].ID;
 	data.entity = e;
 	data.parent = parent;
 	Handle handle = renderBucket.addInstance(data);
@@ -202,6 +222,9 @@ void RenderSyncSystem::createObject(entt::entity parent)
 	registry.emplace<DefaultObjectData>(e, aaAA);
 	if (parent != entt::null)
 		registry.get<DefaultObjectData>(parent).children.push_back(e);
+
+	for (auto& i : objectLoader.getStructures()[object].childeren)
+		createObject(e, i);
 }
 
 void RenderSyncSystem::addLightComponent(entt::entity entity)

@@ -48,6 +48,13 @@ vec3 spotLight(int l)
 
 void main()
 {
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(vec3(0) - FragPos);
 
-    outColor = vec4(1, 1, 1, 1);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * vec3(1);
+
+    vec3 result = (.2 + diffuse) * vec3(1);
+
+    outColor = vec4(result, 1);
 }
