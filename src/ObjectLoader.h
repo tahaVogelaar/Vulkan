@@ -9,12 +9,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <Texture.h>
 #include "lve_utils.hpp"
-#include "json.hpp"
-#include "fastgltf/core.hpp"
+#include <filesystem>
+
+#include "fastgltf/include/core.hpp"
+#include <fastgltf/include/tools.hpp>
+#include <fastgltf/include/util.hpp>
+#include <fastgltf/include/types.hpp>
 
 #include <vector>
-
-using json = nlohmann::json;
 
 struct Vertex {
 	glm::vec3 position{0, 0, 0};
@@ -92,52 +94,15 @@ public:
 	~LoaderObject() = default;
 
 	void loadASingleObject();
-	void loadScene(const char* file);
+	void loadScene(const std::filesystem::path& filePath);
 	std::vector<Builder>& getBuilders() { return builders; }
 private:
 	// for gpu memory
 	std::vector<Builder> builders;
 	uint32_t totalVertexOffset = 0, totalIndexOffset = 0;
 
-	std::vector<Material> materials;
-	std::vector<VulkanTexture> textures;
-	const char* file;
-	std::vector<unsigned char> data;
-
-	json JSON;
-
 	// Loads a single mesh by its index
-	void loadMesh(unsigned int indMesh);
-
+	void processMesh(fastgltf::Asset &asset, const fastgltf::Mesh &mesh);
 	// Traverses a node recursively, so it essentially traverses all connected nodes
-	void traverseNode(unsigned int nextNode, glm::mat4 matrix = glm::mat4(1.0f));
-
-	// Gets the binary data from a file
-	std::vector<unsigned char> getData();
-	// Interprets the binary data into floats, indices, and textures
-	std::vector<float> getFloats(json accessor);
-	std::vector<uint32_t> getIndices(json accessor);
-	//std::vector<Texture> getTextures();
-
-	// Helps with the assembly from above by grouping floats
-	std::vector<Vertex> assembleVertices
-	(
-		std::vector<glm::vec3> positions,
-		std::vector<glm::vec3> normals,
-		std::vector<glm::vec2> texUVs
-	);
-
-	glm::vec3 make_vec3(float a[3])
-	{
-		return glm::vec3(a[0], a[1], a[2]);
-	}
-
-	glm::quat make_quat(float a[4])
-	{
-		return glm::quat(a[0], a[1], a[2], a[3]);
-	}
-
-	std::vector<glm::vec2> groupFloatsVec2(std::vector<float> floatVec);
-	std::vector<glm::vec3> groupFloatsVec3(std::vector<float> floatVec);
-	std::vector<glm::vec4> groupFloatsVec4(std::vector<float> floatVec);
+	void processNode(fastgltf::Asset& asset, const fastgltf::Node& node);
 };

@@ -54,7 +54,6 @@ namespace lve {
 		camera.update(lveWindow.getGLFWwindow(), static_cast<float>(deltaTime), ubo);
 		uboBuffers[frameIndex]->writeToBuffer(&ubo);
 		uboBuffers[frameIndex]->flush();
-
 		// update title
 		if (currentTime - lastUpdate1 > .5)
 		{
@@ -253,8 +252,7 @@ namespace lve {
 	void FirstApp::loadGameObjects()
 	{
 		std::vector<std::string> files;
-		files.emplace_back("/home/taha/Documents/objects/Untitled.gltf");
-		//files.emplace_back("/home/taha/CLionProjects/untitled4/models/cube.obj");
+		files.emplace_back("/home/taha/CLionProjects/untitled4/models/vase.glb");
 		objectLoader.loadScene(files[0].c_str());
 		renderBucket.loadMeshes(objectLoader.getBuilders());
 	}

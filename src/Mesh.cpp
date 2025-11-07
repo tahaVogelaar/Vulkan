@@ -33,20 +33,20 @@ RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBu
 
 void RenderBucket::loadMeshes(std::vector<Builder>& builders)
 {
-	this->builder = builders;
+	builder = builders;
 	drawCommands.clear();
 	vertices.clear();
 	indices.clear();
-	builder.clear();
 
 	uint32_t indexCount = 0;
 	OBJECT_TYPES = 0;
 
-	for (auto i: builder[0].vertices) vertices.push_back(i);
-
-	for (auto i: builder[0].indices) indices.push_back(i);
-	OBJECT_TYPES++;
-	indexCount++;
+	for (auto& b: builder)
+	{
+		for (auto i: b.vertices) vertices.push_back(i);
+		for (auto i: b.indices) indices.push_back(i);
+		OBJECT_TYPES++;
+	}
 
 	createVertexBuffers(vertices);
 	createIndexBuffers(indices);
@@ -60,6 +60,7 @@ void RenderBucket::loadMeshes(std::vector<Builder>& builders)
 );
 	stagingBuffer->map();
 }
+
 
 void RenderBucket::render(VkCommandBuffer commandBuffer)
 {
@@ -106,10 +107,10 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 
 		VkDrawIndexedIndirectCommand cmd{
 			static_cast<uint32_t>(builder[i].indices.size()),   // indexCount
-			instancesForThisMaterial,                  // instanceCount
-			firstIndex,                                // firstIndex
-			vertexOffset,                              // vertexOffset
-			runningBaseInstance                         // firstInstance
+			instancesForThisMaterial,                           // instanceCount
+			firstIndex,                                         // firstIndex
+			vertexOffset,                                       // vertexOffset
+			runningBaseInstance                                 // firstInstance
 		};
 		drawCommands.push_back(cmd);
 
@@ -117,6 +118,12 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 		firstIndex += static_cast<uint32_t>(builder[i].indices.size());
 		vertexOffset += static_cast<int32_t>(builder[i].vertices.size());
 		runningBaseInstance += instancesForThisMaterial;
+
+		/*std::cout << builder[i].indices.size() << '\n' <<
+		instancesForThisMaterial << '\n' <<
+		firstIndex << '\n' <<
+		vertexOffset << '\n' <<
+		runningBaseInstance << "\n\n";*/
 	}
 
 	updateSSBO(objectSSBOA);
@@ -149,13 +156,11 @@ void RenderBucket::updateSSBO(lve::LveBuffer& objectSSBOA)
  //
 void RenderBucket::createDrawCommand()
 {
-	VkDeviceSize bufferSize = OBJECT_TYPES * sizeof(VkDrawIndexedIndirectCommand);
+	if (drawCommands.empty()) return;
+	VkDeviceSize bufferSize = static_cast<VkDeviceSize>(drawCommands.size()) * sizeof(VkDrawIndexedIndirectCommand);
 
-	stagingBuffer->writeToBuffer((void *) drawCommands.data());
-
-	// Copy to persistent GPU buffer
+	stagingBuffer->writeToBuffer(drawCommands.data());
 	lveDevice.copyBuffer(stagingBuffer->getBuffer(), drawCommandsBuffer->getBuffer(), bufferSize);
-
 }
 
 void RenderBucket::deleteInstance(Handle h)
