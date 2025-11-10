@@ -23,14 +23,24 @@ namespace lve {
 		~LveSwapChain();
 
 		LveSwapChain(const LveSwapChain &) = delete;
-
 		LveSwapChain &operator=(const LveSwapChain &) = delete;
+
+		void copyMainToSwapChain(size_t index);
+		void mainPrepareRenderPass(size_t index);
+
+		VkImageView getMainImageView(int index) { return mainImageViews[index]; }
+		VkImage getMainImage(int index) { return mainImages[index]; }
+		VkFormat getMainImageFormat() { return mainImageFormat; }
+
+		VkImageView getSwapchainImageView(int index) { return swapChainImageViews[index]; }
+		VkFormat getSwapChainImageFormat() { return swapChainImageFormat; }
 
 		VkFramebuffer getFrameBuffer(int index) { return swapChainFramebuffers[index]; }
 		VkRenderPass getRenderPass() { return renderPass; }
-		VkImageView getImageView(int index) { return swapChainImageViews[index]; }
+
+		VkImageView getDepthImageView(int index) { return depthImageViews[index]; }
+
 		size_t imageCount() { return swapChainImages.size(); }
-		VkFormat getSwapChainImageFormat() { return swapChainImageFormat; }
 		VkExtent2D getSwapChainExtent() { return swapChainExtent; }
 		uint32_t width() { return swapChainExtent.width; }
 		uint32_t height() { return swapChainExtent.height; }
@@ -42,6 +52,7 @@ namespace lve {
 		}
 
 		VkFormat findDepthFormat();
+		static VkFormat getImageFormat() { return VK_FORMAT_R8G8B8A8_UNORM; }
 
 		VkResult acquireNextImage(uint32_t *imageIndex);
 
@@ -53,12 +64,19 @@ namespace lve {
 					swapChain.swapChainImageFormat == swapChainImageFormat;
 		}
 
+		static VkSurfaceFormatKHR chooseSwapSurfaceFormat(
+			const std::vector<VkSurfaceFormatKHR> &availableFormats);
+
+		static VkPresentModeKHR chooseSwapPresentMode(
+			const std::vector<VkPresentModeKHR> &availablePresentModes);
 	private:
 		void init();
 
+		void createMainResources();
+
 		void createSwapChain();
 
-		void createImageViews();
+		void createSwapChainImageViews();
 
 		void createDepthResources();
 
@@ -68,15 +86,12 @@ namespace lve {
 
 		void createSyncObjects();
 
-		// Helper functions
-		VkSurfaceFormatKHR chooseSwapSurfaceFormat(
-			const std::vector<VkSurfaceFormatKHR> &availableFormats);
 
-		VkPresentModeKHR chooseSwapPresentMode(
-			const std::vector<VkPresentModeKHR> &availablePresentModes);
+		// Helper functions
 
 		VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
 
+		VkFormat mainImageFormat;
 		VkFormat swapChainImageFormat;
 		VkFormat swapChainDepthFormat;
 		VkExtent2D swapChainExtent;
@@ -89,6 +104,9 @@ namespace lve {
 		std::vector<VkImageView> depthImageViews;
 		std::vector<VkImage> swapChainImages;
 		std::vector<VkImageView> swapChainImageViews;
+		std::vector<VkImage> mainImages;
+		std::vector<VkDeviceMemory> mainImageMemorys;
+		std::vector<VkImageView> mainImageViews;
 
 		LveDevice &device;
 		VkExtent2D windowExtent;

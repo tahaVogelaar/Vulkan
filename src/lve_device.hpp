@@ -16,9 +16,11 @@ namespace lve {
 	struct QueueFamilyIndices {
 		uint32_t graphicsFamily;
 		uint32_t presentFamily;
+		uint32_t computeFamily;
 		bool graphicsFamilyHasValue = false;
 		bool presentFamilyHasValue = false;
-		bool isComplete() { return graphicsFamilyHasValue && presentFamilyHasValue; }
+		bool computeFamilyHasValue = false;
+		bool isComplete() { return graphicsFamilyHasValue && presentFamilyHasValue && computeFamilyHasValue; }
 	};
 
 	class LveDevice {
@@ -47,6 +49,7 @@ namespace lve {
 		VkSurfaceKHR surface() { return surface_; }
 		VkQueue graphicsQueue() { return graphicsQueue_; }
 		VkQueue presentQueue() { return presentQueue_; }
+		VkQueue computeQueue() { return computeQueue_; }
 		VkInstance getInstance() { return instance; }
 		VkPhysicalDevice getPhysicalDevice() { return physicalDevice; }
 
@@ -132,6 +135,7 @@ namespace lve {
 		VkSurfaceKHR surface_;
 		VkQueue graphicsQueue_;
 		VkQueue presentQueue_;
+		VkQueue computeQueue_;
 
 		const std::vector<const char *> validationLayers = {"VK_LAYER_KHRONOS_validation"};
 		const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};

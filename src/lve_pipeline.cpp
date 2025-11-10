@@ -48,32 +48,22 @@ namespace lve {
 		return ss.str();
 	}
 
-	std::vector<uint32_t> LvePipeline::shaderToSpirV(
-		std::string source,
-		shaderc_shader_kind kind,
-		const std::string &name,
-		const std::string &entryPoint = "main")
+	std::vector<uint32_t> LvePipeline::shaderToSpirV(std::string source, shaderc_shader_kind kind,
+													 std::string sourceName, std::string entry)
 	{
 		shaderc::Compiler compiler;
 		shaderc::CompileOptions options;
-
-		// Optional: enable performance optimization
 		options.SetOptimizationLevel(shaderc_optimization_level_performance);
 
-
-		// Compile GLSL to SPIR-V
 		shaderc::SpvCompilationResult module =
-				compiler.CompileGlslToSpv(source, kind, name.c_str(), entryPoint.c_str(), options);
+			compiler.CompileGlslToSpv(source, kind, sourceName.c_str(), entry.c_str(), options);
 
-		// Check compilation status
 		if (module.GetCompilationStatus() != shaderc_compilation_status_success)
-		{
-			throw std::runtime_error("Shader compilation failed: " + module.GetErrorMessage());
-		}
+			throw std::runtime_error(module.GetErrorMessage());
 
-		// Copy SPIR-V into vector<uint32_t>
 		return {module.cbegin(), module.cend()};
 	}
+
 
 	void LvePipeline::createGraphicsPipeline(
 		const std::string &vertFilepath,
@@ -232,7 +222,7 @@ namespace lve {
 		configInfo.rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;
 		configInfo.rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
 		configInfo.rasterizationInfo.lineWidth = 1.0f;
-		configInfo.rasterizationInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+		configInfo.rasterizationInfo.cullMode = VK_CULL_MODE_NONE;
 		configInfo.rasterizationInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
 		configInfo.rasterizationInfo.depthBiasEnable = VK_FALSE;
 		configInfo.rasterizationInfo.depthBiasConstantFactor = 0.0f; // Optional
@@ -329,7 +319,7 @@ namespace lve {
 		configInfo.rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;
 		configInfo.rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
 		configInfo.rasterizationInfo.lineWidth = 1.0f;
-		configInfo.rasterizationInfo.cullMode = VK_CULL_MODE_BACK_BIT; // Cull back faces for shadows
+		configInfo.rasterizationInfo.cullMode = VK_CULL_MODE_NONE; // Cull back faces for shadows
 		configInfo.rasterizationInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
 		configInfo.rasterizationInfo.depthBiasEnable = VK_TRUE; // Enable depth bias
 		configInfo.rasterizationInfo.depthBiasConstantFactor = 1.25f;

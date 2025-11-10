@@ -16,6 +16,8 @@ set(IMGUI_SOURCES
         external/imgui/imgui_widgets.cpp
         external/imgui/backends/imgui_impl_glfw.cpp
         external/imgui/backends/imgui_impl_vulkan.cpp
+        src/compute.cpp
+        src/compute.h
 )
 
 # Engine library

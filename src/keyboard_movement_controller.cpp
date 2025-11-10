@@ -58,7 +58,7 @@ namespace lve {
 
 		// clamp rotation
 		float yaw = rotation.y;
-		float pitch = rotation.x;
+		float pitch = -rotation.x;
 
 		// Clamp pitch to avoid flipping
 		pitch = glm::clamp(pitch, -89.0f, 89.0f);
@@ -71,29 +71,36 @@ namespace lve {
 		glm::vec3 forward = glm::normalize(newForward);
 		glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.f, 1.f, 0.f)));
 		glm::vec3 up = glm::normalize(glm::cross(right, forward));
+
+
+		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+			currentSpeed = fastSpeed;
+		else
+			currentSpeed = normalSpeed;
+
 		if (glfwGetKey(window, keys.moveForward) == GLFW_PRESS)
 		{
-			position += forward * moveSpeed * dt;
+			position += forward * currentSpeed * dt;
 		}
 		if (glfwGetKey(window, keys.moveBackward) == GLFW_PRESS)
 		{
-			position -= forward * moveSpeed * dt;
+			position -= forward * currentSpeed * dt;
 		}
 		if (glfwGetKey(window, keys.moveLeft) == GLFW_PRESS)
 		{
-			position -= right * moveSpeed * dt;
+			position -= right * currentSpeed * dt;
 		}
 		if (glfwGetKey(window, keys.moveRight) == GLFW_PRESS)
 		{
-			position += right * moveSpeed * dt;
+			position += right * currentSpeed * dt;
 		}
 		if (glfwGetKey(window, keys.moveUp) == GLFW_PRESS)
 		{
-			position -= up * moveSpeed * dt;
+			position += up * currentSpeed * dt;
 		}
 		if (glfwGetKey(window, keys.moveDown) == GLFW_PRESS)
 		{
-			position += up * moveSpeed * dt;
+			position -= up * currentSpeed * dt;
 		}
 
 		LveCamera lveCam;

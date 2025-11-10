@@ -92,7 +92,7 @@ struct TransformComponent {
 };
 
 struct Structure {
-	int32_t ID = 0;
+	int32_t ID = -1;
 	int32_t index = -1, parent = -1;
 	std::vector<int32_t> childeren;
 	TransformComponent transform;
@@ -115,15 +115,15 @@ public:
 	std::vector<Builder>& getBuilders() { return builders; }
 	std::vector<Structure>& getStructures() {return structures; }
 
-	glm::vec3 mat4ToPosition(const glm::mat4& matrix);
-	glm::vec3 mat4ToRotation(const glm::mat4& matrix);
-	glm::vec3 mat4ToRotation(const glm::mat4& matrix, const glm::vec3& scale);
-	glm::vec3 mat4ToScale(const glm::mat4& matrix);
-	glm::vec3 mat4ToScale(const glm::mat4& matrix, const glm::vec3& scale);
-	glm::quat mat4ToQuaternion(const glm::mat4& matrix);
-	glm::quat mat4ToQuaternion(const glm::mat4& matrix, const glm::vec3& scale);
-	glm::vec3 quaternionToVec3(const glm::quat& v);
-	glm::quat vec3ToQuaternion(const glm::vec3& v);
+	static glm::vec3 mat4ToPosition(const glm::mat4& matrix);
+	static glm::vec3 mat4ToRotation(const glm::mat4& matrix);
+	static glm::vec3 mat4ToRotation(const glm::mat4& matrix, const glm::vec3& scale);
+	static glm::vec3 mat4ToScale(const glm::mat4& matrix);
+	static glm::vec3 mat4ToScale(const glm::mat4& matrix, const glm::vec3& scale);
+	static glm::quat mat4ToQuaternion(const glm::mat4& matrix);
+	static glm::quat mat4ToQuaternion(const glm::mat4& matrix, const glm::vec3& scale);
+	static glm::vec3 quaternionToVec3(const glm::quat& v);
+	static glm::quat vec3ToQuaternion(const glm::vec3& v);
 private:
 	// for gpu memory
 	std::vector<Builder> builders;

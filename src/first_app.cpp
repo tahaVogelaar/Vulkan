@@ -21,9 +21,9 @@ namespace lve {
 	void FirstApp::loadGameObjects()
 	{
 		std::vector<std::string> files;
-		files.emplace_back("/home/taha/CLionProjects/untitled4/models/test1/New_Sponza_001.gltf");
-		files.emplace_back("/home/taha/CLionProjects/untitled4/models/test.gltf");
-		//objectLoader.loadScene(files[0].c_str());
+		files.emplace_back("../models/free_porsche_911_carrera_4s/scene.gltf");
+		files.emplace_back("../models/test.glb");
+		objectLoader.loadScene(files[0].c_str());
 		objectLoader.loadScene(files[1].c_str());
 		renderBucket.loadMeshes(objectLoader.getBuilders());
 	}
@@ -44,6 +44,7 @@ namespace lve {
 			if (VkCommandBuffer commandBuffer = startFrame())
 			{
 				frameIndex = lveRenderer.getFrameIndex();
+				//std::cout << "\n\n" << frameIndex << "\n\n";
 
 				//fullScreenQuat->draw(commandBuffer, frameIndex);
 				update(commandBuffer);
@@ -51,6 +52,10 @@ namespace lve {
 				render(commandBuffer);
 				renderImGui(commandBuffer);
 
+
+				lveRenderer.endSwapChainRenderPass(commandBuffer);
+				//compute->run(lveRenderer.getSwapChain()->getMainImage(frameIndex), lveWindow.getExtent());
+				lveRenderer.endFrame();
 				endFrame(commandBuffer);
 			}
 		}
@@ -239,6 +244,9 @@ namespace lve {
 			lveDevice, *lveRenderer.getSwapChain(), VkExtent2D(WIDTH, HEIGHT),
 			globalSetLayout->getDescriptorSetLayout(), AAa, AAAa
 		 );
+
+		std::string sor = "/home/taha/CLionProjects/untitled4/shaders/compute.glsl";
+		compute = std::make_unique<Compute>(lveDevice, sor, *lveRenderer.getSwapChain());
 	}
 
 	VkCommandBuffer FirstApp::startFrame()
@@ -254,8 +262,6 @@ namespace lve {
 
 	void FirstApp::endFrame(VkCommandBuffer &commandBuffer)
 	{
-		lveRenderer.endSwapChainRenderPass(commandBuffer);
-		lveRenderer.endFrame();
 	}
 
 

@@ -1,5 +1,6 @@
 #include "coreRenderer.h"
 #include <iostream>
+#include <glm/gtc/type_ptr.hpp>
 
 RenderSyncSystem::RenderSyncSystem(RenderBucket &bucket, lve::LveDevice &device,
 									lve::LveDescriptorSetLayout& descriptor, LoaderObject& objectLoader) :
@@ -53,7 +54,7 @@ void RenderSyncSystem::renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDT
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::Begin("Objects", nullptr,
+	ImGui::Begin(std::to_string(registry.view<DefaultObjectData>().size()).c_str(), nullptr,
 		ImGuiWindowFlags_NoResize |
 		ImGuiWindowFlags_NoCollapse |
 		ImGuiWindowFlags_NoMove);
@@ -108,7 +109,14 @@ void RenderSyncSystem::renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDT
 		{
 			ImGui::Text("Transform");
 			ImGui::DragFloat3("Position", &transform->translation.x, 0.1f);
-			ImGui::DragFloat3("Rotation", &transform->rotation.x, 0.1f);
+
+			glm::vec3 rotationRadians = transform->rotation;
+			glm::vec3 rotationDegrees = glm::degrees(rotationRadians);
+			if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), 1.0f)) {
+				// Convert back to radians for internal use
+				rotationRadians = glm::radians(rotationDegrees);
+				transform->rotation = rotationRadians;
+			}
 			ImGui::DragFloat3("Scale", &transform->scale.x, 0.1f);
 			transform->dirty = true;
 		}
@@ -180,10 +188,16 @@ void RenderSyncSystem::renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDT
 }
 
 void RenderSyncSystem::deleteObject(entt::entity entity) {
+	if (!registry.valid(entity))
+		return;
+
 	auto& data = registry.get<DefaultObjectData>(entity);
 
-	// Remove self from parent’s children list
-	if (data.parent != entt::null) {
+	// Copy children first, since we'll be modifying registry during recursion
+	auto childrenCopy = data.children;
+
+	// Remove self from parent’s child list
+	if (data.parent != entt::null && registry.valid(data.parent)) {
 		auto& parentData = registry.get<DefaultObjectData>(data.parent);
 		parentData.children.erase(
 			std::remove(parentData.children.begin(), parentData.children.end(), entity),
@@ -191,40 +205,62 @@ void RenderSyncSystem::deleteObject(entt::entity entity) {
 		);
 	}
 
-	// Recursively delete children
-	for (auto child : data.children) {
+	// Recursively delete children (safe from modification)
+	for (auto child : childrenCopy) {
 		if (registry.valid(child))
 			deleteObject(child);
 	}
 
-	renderBucket.deleteInstance(data.handle);
+	// Remove from GPU/render data
+	if (data.handle != Handle{-1, -1})
+		renderBucket.deleteInstance(data.handle);
+
+	// Destroy self
 	registry.destroy(entity);
 }
+
 
 
 void RenderSyncSystem::createObject(entt::entity parent, int32_t object)
 {
 	entt::entity e = registry.create();
 	TransformComponent& a = registry.emplace<TransformComponent>(e);
-	registry.emplace<MeshComponent>(e, objectLoader.getStructures()[object].ID);
 
-	BucketSendData data{};
-	data.model = a.mat4();
-	data.materialId = objectLoader.getStructures()[object].ID;
-	data.entity = e;
-	data.parent = parent;
-	Handle handle = renderBucket.addInstance(data);
+	a.translation = objectLoader.getStructures()[object].transform.translation;
+	a.rotation = objectLoader.getStructures()[object].transform.rotation;
+	a.scale = objectLoader.getStructures()[object].transform.scale;
+	a.mat4();
+
 
 	DefaultObjectData aaAA{};
 	aaAA.parent = parent;
-	aaAA.handle = handle;
+	aaAA.handle = Handle{-1, -1};
 	aaAA.dirty = false;
-	registry.emplace<DefaultObjectData>(e, aaAA);
+	auto& dataA = registry.emplace<DefaultObjectData>(e, aaAA);
 	if (parent != entt::null)
 		registry.get<DefaultObjectData>(parent).children.push_back(e);
 
 	for (auto& i : objectLoader.getStructures()[object].childeren)
 		createObject(e, i);
+
+
+	if (objectLoader.getStructures()[object].ID != -1)
+		registry.emplace<MeshComponent>(e, objectLoader.getStructures()[object].ID);
+	else
+	{
+
+		std::cout << objectLoader.getStructures()[object].ID << '\n';
+		return;
+	}
+
+
+	BucketSendData data{};
+	data.model = a.worldMatrix;
+	data.materialId = objectLoader.getStructures()[object].ID;
+	data.entity = e;
+	data.parent = parent;
+	Handle handle = renderBucket.addInstance(data);
+	dataA.handle = handle;
 }
 
 void RenderSyncSystem::addLightComponent(entt::entity entity)
@@ -291,9 +327,10 @@ void RenderSyncSystem::updateTransformRecursive(entt::entity entity, const glm::
 		transform.worldMatrix = parentMatrix * transform.mat4();
 		transform.dirty = false;
 
-		auto &mesh = registry.get<MeshComponent>(entity);
-		renderBucket.get(data.handle)->model = transform.worldMatrix;
-		renderBucket.get(data.handle)->materialId = mesh.materialId;
+		if (auto *mesh = registry.try_get<MeshComponent>(entity)) {
+			renderBucket.get(data.handle)->model = transform.worldMatrix;
+			renderBucket.get(data.handle)->materialId = mesh->materialId;
+		}
 	}
 
 	// Update children

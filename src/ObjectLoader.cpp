@@ -14,6 +14,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 void LoaderObject::loadScene(const std::filesystem::path& filePath) {
 	namespace fg = fastgltf;
@@ -22,6 +24,7 @@ void LoaderObject::loadScene(const std::filesystem::path& filePath) {
 
 	// 2. Create the parser
 	fg::Parser parser;
+	fastgltf::Options options = fastgltf::Options::LoadExternalBuffers;
 
 	// 3. Parse depending on file type
 	std::unique_ptr<fg::Expected<fg::Asset>> assetResult;
@@ -29,14 +32,14 @@ void LoaderObject::loadScene(const std::filesystem::path& filePath) {
 		assetResult = std::make_unique<fg::Expected<fg::Asset>>(parser.loadGltfBinary(
 			data.get(),
 			filePath.parent_path(),
-			fg::Options::LoadExternalBuffers,
+			options,
 			fg::Category::All
 		));
 	} else {
 		assetResult = std::make_unique<fg::Expected<fg::Asset>>(parser.loadGltf(
 			data.get(),
 			filePath.parent_path(),
-			fg::Options::LoadExternalBuffers,
+			options,
 			fg::Category::All
 		));
 	}
@@ -54,23 +57,11 @@ void LoaderObject::loadScene(const std::filesystem::path& filePath) {
 		return;
 	}
 
-
-
-	//Structure ss;
-	//structures.push_back(ss);
-	//uint32_t index = structures.size() - 1;
-	//structures[index].index = index;
-	//structures[index].parent = -1;
-	//structures[index].transform = TransformComponent{};
-	//structures[index].ID = -1;
-	//structures[index].name = "skibidi";
-
 	const fg::Scene& scene = asset.scenes[asset.defaultScene.value_or(0)];
 	// Traverse all root nodes
 	for (auto nodeIndex : scene.nodeIndices) {
 		const fg::Node& node = asset.nodes[nodeIndex];
 		int32_t childIndex = processNode(asset, node, -1);
-		//structures[index].childeren.push_back(childIndex);
 	}
 }
 
@@ -91,6 +82,18 @@ const std::byte* getBufferData(const fastgltf::Asset& asset, const fastgltf::Buf
 	throw std::runtime_error("Unsupported buffer source type.");
 }
 
+glm::vec3 mat4ToRotationRadians(const glm::mat4& matrix)
+{
+	glm::vec3 scale = LoaderObject::mat4ToScale(matrix);
+	glm::mat3 rotMat;
+	rotMat[0] = glm::vec3(matrix[0]) / scale.x;
+	rotMat[1] = glm::vec3(matrix[1]) / scale.y;
+	rotMat[2] = glm::vec3(matrix[2]) / scale.z;
+
+	return glm::eulerAngles(glm::quat_cast(rotMat)); // radians directly
+}
+
+
 int32_t LoaderObject::processNode(fastgltf::Asset& asset, const fastgltf::Node& node, int32_t parentStructure) {
 	glm::mat4 localTransform{1.0f};
 	Structure s;
@@ -99,36 +102,16 @@ int32_t LoaderObject::processNode(fastgltf::Asset& asset, const fastgltf::Node& 
 	structures[index].index = index;
 	structures[index].parent = parentStructure;
 
-	switch (node.transform.index()) {
-		case 1: { // Matrix
-			const auto& mat = std::get<fastgltf::math::fmat4x4>(node.transform);
-			localTransform = glm::make_mat4(mat.data());
-			break;
-		}
-		case 2: { // TRS
-			const auto& trs = std::get<fastgltf::TRS>(node.transform);
+	const auto mat = fastgltf::getTransformMatrix(node);
+	localTransform = glm::make_mat4(mat.data());
 
-			glm::vec3 translation = glm::make_vec3(trs.translation.data());
-			glm::quat rotation = glm::make_quat(trs.rotation.data()); // w,x,y,z order
-			glm::vec3 scale = glm::make_vec3(trs.scale.data());
-
-			localTransform =
-				glm::translate(glm::mat4(1.0f), translation) *
-				glm::mat4_cast(rotation) *
-				glm::scale(glm::mat4(1.0f), scale);
-			break;
-		}
-		case 0:
-		default:
-			// Identity
-			localTransform = glm::mat4(1.0f);
-			break;
-	}
 
 	if (node.meshIndex.has_value()) {
 		const fastgltf::Mesh& mesh = asset.meshes[node.meshIndex.value()];
 		structures[index].ID = processMesh(asset, mesh);
 	}
+	else
+		structures[index].ID = -1;
 
 	// Traverse child nodes
 	for (auto childIdx : node.children) {
@@ -138,7 +121,10 @@ int32_t LoaderObject::processNode(fastgltf::Asset& asset, const fastgltf::Node& 
 
 
 	structures[index].transform.translation = mat4ToPosition(localTransform);
-	structures[index].transform.rotation = mat4ToRotation(localTransform);
+	structures[index].transform.rotation = (mat4ToRotationRadians(localTransform));
+	/*std::cout << structures[index].transform.rotation.x << ' ' <<
+		structures[index].transform.rotation.y << ' ' <<
+			structures[index].transform.rotation.z << '\n';*/
 	structures[index].transform.scale = mat4ToScale(localTransform);
 	structures[index].name = node.name;
 	return index;
@@ -147,108 +133,118 @@ int32_t LoaderObject::processNode(fastgltf::Asset& asset, const fastgltf::Node& 
 
 int32_t LoaderObject::processMesh(fastgltf::Asset &asset, const fastgltf::Mesh &mesh)
 {
-	uint32_t ID = 0;
-	Builder builder;
-	for (const auto& prim : mesh.primitives)
-	{
-		// --- Positions ---
-		if (auto it = prim.findAttribute("POSITION"); it != prim.attributes.end()) {
-			const fastgltf::Accessor& accessor = asset.accessors[it->accessorIndex];
-			const fastgltf::BufferView& view = asset.bufferViews[accessor.bufferViewIndex.value()];
-			const std::byte* base = getBufferData(asset, view) + accessor.byteOffset;
+    uint32_t ID = 0;
+    Builder builder;
 
-			const size_t stride = view.byteStride.value_or(
-				fastgltf::getElementByteSize(accessor.type, accessor.componentType)
-			);
+    // keep track of per-mesh offsets for concatenation
+    size_t vertexBase = 0;
+    size_t indexBase = 0;
 
-			for (size_t i = 0; i < accessor.count; ++i) {
-				const float* f = reinterpret_cast<const float*>(base + i * stride);
-				Vertex vert;
-				vert.position = glm::vec3(f[0], f[1], f[2]);
-				builder.vertices.push_back(vert);
-			}
-		}
+    for (const auto& prim : mesh.primitives)
+    {
+        // Determine vertex count for this primitive (from POSITION accessor)
+        size_t primVertexCount = 0;
+        if (auto it = prim.findAttribute("POSITION"); it != prim.attributes.end()) {
+            const fastgltf::Accessor& acc = asset.accessors[it->accessorIndex];
+            primVertexCount = acc.count;
+        } else {
+            // no positions? skip primitive (can't render)
+            continue;
+        }
 
-		// --- Normals ---
-		if (auto it = prim.findAttribute("NORMAL"); it != prim.attributes.end()) {
-			const fastgltf::Accessor& accessor = asset.accessors[it->accessorIndex];
-			const fastgltf::BufferView& view = asset.bufferViews[accessor.bufferViewIndex.value()];
-			const std::byte* base = getBufferData(asset, view) + accessor.byteOffset;
+        // temp storage for this primitive
+        std::vector<Vertex> primVerts;
+        primVerts.resize(primVertexCount);
 
-			const size_t stride = view.byteStride.value_or(
-				fastgltf::getElementByteSize(accessor.type, accessor.componentType)
-			);
+        // --- Positions (required) ---
+        {
+            const fastgltf::Accessor& accessor = asset.accessors[prim.findAttribute("POSITION")->accessorIndex];
+            size_t idx = 0;
+            fastgltf::iterateAccessor<fastgltf::math::fvec3>(asset, accessor, [&](fastgltf::math::fvec3 v) {
+                primVerts[idx++].position = glm::vec3(v[0], v[1], v[2]);
+            });
+        }
 
-			for (size_t i = 0; i < accessor.count; ++i) {
-				const float* f = reinterpret_cast<const float*>(base + i * stride);
-				builder.vertices[i].normal = glm::vec3(f[0], f[1], f[2]);
-			}
-		}
+        // --- Normals (optional) ---
+        if (auto it = prim.findAttribute("NORMAL"); it != prim.attributes.end()) {
+            const fastgltf::Accessor& accessor = asset.accessors[it->accessorIndex];
+            size_t idx = 0;
+            fastgltf::iterateAccessor<fastgltf::math::fvec3>(asset, accessor, [&](fastgltf::math::fvec3 v) {
+                primVerts[idx++].normal = glm::vec3(v[0], v[1], v[2]);
+            });
+        } else {
+            // fill with default normal (e.g. up) or zero
+            for (size_t i = 0; i < primVertexCount; ++i) primVerts[i].normal = glm::vec3(0.0f, 1.0f, 0.0f);
+        }
 
-		// --- UVs ---
-		if (auto it = prim.findAttribute("TEXCOORD_0"); it != prim.attributes.end()) {
-			const fastgltf::Accessor& accessor = asset.accessors[it->accessorIndex];
-			const fastgltf::BufferView& view = asset.bufferViews[accessor.bufferViewIndex.value()];
-			const std::byte* base = getBufferData(asset, view) + accessor.byteOffset;
+        // --- UVs (optional) ---
+        if (auto it = prim.findAttribute("TEXCOORD_0"); it != prim.attributes.end()) {
+            const fastgltf::Accessor& accessor = asset.accessors[it->accessorIndex];
+            size_t idx = 0;
+            fastgltf::iterateAccessor<fastgltf::math::fvec2>(asset, accessor, [&](fastgltf::math::fvec2 v) {
+                primVerts[idx++].uv = glm::vec2(v[0], v[1]);
+            });
+        } else {
+            for (size_t i = 0; i < primVertexCount; ++i) primVerts[i].uv = glm::vec2(0.0f, 0.0f);
+        }
 
-			const size_t stride = view.byteStride.value_or(
-				fastgltf::getElementByteSize(accessor.type, accessor.componentType)
-			);
+        // --- Colors (optional) ---
+        if (auto it = prim.findAttribute("COLOR_0"); it != prim.attributes.end()) {
+            const fastgltf::Accessor& accessor = asset.accessors[it->accessorIndex];
+            const fastgltf::BufferView& view = asset.bufferViews[accessor.bufferViewIndex.value()];
+            const std::byte* base = getBufferData(asset, view) + accessor.byteOffset;
+            const size_t stride = view.byteStride.value_or(fastgltf::getElementByteSize(accessor.type, accessor.componentType));
+            for (size_t i = 0; i < accessor.count; ++i) {
+                const float* f = reinterpret_cast<const float*>(base + i * stride);
+                primVerts[i].color = glm::vec4(f[0], f[1], f[2], (accessor.type == fastgltf::AccessorType::Vec4) ? f[3] : 1.0f);
+            }
+        } else {
+            for (size_t i = 0; i < primVertexCount; ++i) primVerts[i].color = glm::vec4(1.0f);
+        }
 
-			for (size_t i = 0; i < accessor.count; ++i) {
-				const float* f = reinterpret_cast<const float*>(base + i * stride);
-				builder.vertices[i].uv = glm::vec2(f[0], f[1]);
-			}
-		}
+        // --- Indices (optional) ---
+        std::vector<uint32_t> primIndices;
+        if (prim.indicesAccessor.has_value()) {
+            auto& accessor = asset.accessors[prim.indicesAccessor.value()];
+            primIndices.resize(accessor.count);
+            uint32_t idx = 0;
+            fastgltf::iterateAccessor<uint32_t>(asset, accessor, [&](uint32_t index) {
+                primIndices[idx++] = index;
+            });
 
-		// --- Colors (optional) ---
-		if (auto it = prim.findAttribute("COLOR_0"); it != prim.attributes.end()) {
-			const fastgltf::Accessor& accessor = asset.accessors[it->accessorIndex];
-			const fastgltf::BufferView& view = asset.bufferViews[accessor.bufferViewIndex.value()];
-			const std::byte* base = getBufferData(asset, view) + accessor.byteOffset;
+            // offset indices by vertexBase when appending
+            for (auto &i : primIndices) i += static_cast<uint32_t>(vertexBase);
+        } else {
+            // no indices: create a trivial index list
+            primIndices.resize(primVertexCount);
+            for (uint32_t i = 0; i < (uint32_t)primVertexCount; ++i) primIndices[i] = vertexBase + i;
+        }
 
-			const size_t stride = view.byteStride.value_or(
-				fastgltf::getElementByteSize(accessor.type, accessor.componentType)
-			);
-			if (accessor.count > 0)
-				for (size_t i = 0; i < accessor.count; ++i) {
-					const float* f = reinterpret_cast<const float*>(base + i * stride);
-					builder.vertices[i].color = glm::vec4(f[0], f[1], f[2], f[3]);
-				}
-		}
+        // append primVerts and primIndices into builder
+        builder.vertices.insert(builder.vertices.end(), primVerts.begin(), primVerts.end());
+        builder.indices.insert(builder.indices.end(), primIndices.begin(), primIndices.end());
 
-		// --- Indices ---
-		if (prim.indicesAccessor.has_value()) {
-			auto& accessor = asset.accessors[prim.indicesAccessor.value()];
-			const fastgltf::BufferView& view = asset.bufferViews[accessor.bufferViewIndex.value()];
+        // update base counters
+        vertexBase = builder.vertices.size();
+        indexBase  = builder.indices.size();
+    } // primitives
 
-			const std::byte* bufferData = getBufferData(asset, view);
-			const std::byte* base = bufferData + view.byteOffset + accessor.byteOffset;
+    // set offsets/ID then push builder
+    builder.ID = static_cast<uint32_t>(builders.size());
+    if (!builders.empty()) {
+        // previous totals
+        const auto &prev = builders.back();
+        builder.vertexOffset = prev.vertices.size() + prev.vertexOffset;
+        builder.indexOffset  = prev.indices.size()  + prev.indexOffset;
+    } else {
+        builder.vertexOffset = 0;
+        builder.indexOffset  = 0;
+    }
 
-			builder.indices.resize(accessor.count);
-			uint32_t idx = 0;
-			fastgltf::iterateAccessor<std::uint32_t>(asset, accessor, [&](std::uint32_t index) {
-				builder.indices[idx++] = index;
-			});
-		}
-	}
-
-
-	builder.ID = builders.size();
-	if (!builders.empty())
-	{
-		builder.vertexOffset = builders[builders.size() - 1].vertices.size() + builders[builders.size() - 1].vertexOffset;
-		builder.indexOffset = builders[builders.size() - 1].indices.size() + builders[builders.size() - 1].indexOffset;
-	}
-	else
-	{
-		builder.vertexOffset = 0;
-		builder.indexOffset = 0;
-	}
-
-	builders.push_back(builder);
-	return builder.ID;
+    builders.push_back(builder);
+    return builder.ID;
 }
+
 
 
 

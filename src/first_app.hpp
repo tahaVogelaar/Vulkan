@@ -21,6 +21,7 @@
 #include "coreRenderer.h"
 #include "fullScreenQuat.h"
 #include "ObjectLoader.h"
+#include "compute.h"
 
 
 namespace lve {
@@ -59,6 +60,7 @@ namespace lve {
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem;
 		std::unique_ptr<LveDescriptorSetLayout> globalSetLayout;
 		std::string simpleVert = "/home/taha/CLionProjects/untitled4/shaders/shader.vert", simpleFrag = "/home/taha/CLionProjects/untitled4/shaders/shader.frag";
+		std::unique_ptr<Compute> compute;
 
 		// stuff
 		Camera camera;
@@ -83,7 +85,7 @@ namespace lve {
 		std::vector<std::unique_ptr<Material> > textures;
 
 		// note: order of declarations matters
-		std::unique_ptr<LveDescriptorPool> globalPool{}, ssobPool{};
+		std::unique_ptr<LveDescriptorPool> globalPool{};
 		std::vector<VkDescriptorSet> globalDescriptorSets{LveSwapChain::MAX_FRAMES_IN_FLIGHT};
 		std::vector<std::unique_ptr<LveBuffer> > uboBuffers{LveSwapChain::MAX_FRAMES_IN_FLIGHT};
 

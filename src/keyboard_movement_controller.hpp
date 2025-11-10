@@ -31,8 +31,8 @@ namespace lve {
 
 		void update(GLFWwindow *window, float dt, GlobalUbo &ubo);
 
+		float normalSpeed = 2, fastSpeed = 10, currentSpeed = normalSpeed;
 		KeyMappings keys{};
-		float moveSpeed{1.f};
 		float lookSpeed{0.1f};
 		float fov = 70.f, aspect = 1.f, nearPlane = .1f, farPlane = 1000.f;
 		bool firstMouse = true;

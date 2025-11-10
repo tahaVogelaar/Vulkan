@@ -116,7 +116,14 @@ void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
 		firstIndex += static_cast<uint32_t>(builder[i].indices.size());
 		vertexOffset += static_cast<int32_t>(builder[i].vertices.size());
 		runningBaseInstance += instancesForThisMaterial;
+
+		/*std::cout << builder[i].indices.size() << '\n' <<
+		instancesForThisMaterial << '\n' <<
+		firstIndex << '\n' <<
+		vertexOffset << '\n' <<
+		runningBaseInstance << "\n\n";*/
 	}
+		//std::cout << "=============--------------=============\n\n";
 
 	updateSSBO(objectSSBOA);
     createDrawCommand();

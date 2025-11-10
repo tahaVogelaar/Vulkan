@@ -35,8 +35,12 @@ struct BucketSendData {
 };
 
 struct Handle {
-	uint32_t index;
-	uint32_t generation;
+	int32_t index = -1;
+	int32_t generation = -1;
+
+	bool operator==(const Handle &v) const {
+		return (index == v.index && generation == v.generation);
+	}
 };
 
 class RenderBucket {

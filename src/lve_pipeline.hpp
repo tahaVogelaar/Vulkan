@@ -54,13 +54,11 @@ namespace lve {
 
 		VkPipeline getPipeline() const {return graphicsPipeline; };
 
-	private:
 		static std::string readFile(const std::string &filepath);
+		static std::vector<uint32_t> shaderToSpirV(std::string source, shaderc_shader_kind kind,
+													std::string sourceName, std::string entry = "main");
+	private:
 
-		static std::vector<uint32_t> shaderToSpirV(std::string source,
-													shaderc_shader_kind kind,
-													const std::string &name,
-													const std::string &entryPoint);
 
 		void createGraphicsPipeline(
 			const std::string &vertFilepath,
