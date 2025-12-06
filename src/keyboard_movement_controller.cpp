@@ -13,23 +13,29 @@
 namespace lve {
 	void Camera::update(GLFWwindow *window, float dt, GlobalUbo &ubo)
 	{
-		glm::vec3 position = ubo.camPos, rotation = ubo.rotation;
+		glm::vec3 position = glm::vec3(ubo.camPos.x, ubo.camPos.y, ubo.camPos.z);
+		glm::vec3 rotation = glm::vec3(ubo.rotation.x, ubo.rotation.y, ubo.rotation.z);
 
 		if (glfwGetMouseButton(window, 1) && firstMouse)
 		{
-
 			int WX, WY; glfwGetWindowSize(window, &WY, &WX);
-			glfwSetCursorPos(window, WY / 2, WX / 2);
+			double centerX = WY / 2;
+			double centerY = WX / 2;
+
+			glfwSetCursorPos(window, centerX, centerY);
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+			lastX = centerX;     // <<< IMPORTANT
+			lastY = centerY;     // <<< IMPORTANT
 
 			firstMouse = false;
 			return;
 		}
+
 		else if (glfwGetMouseButton(window, 1)) {
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 			double dx, dy;
-			static double lastX = 0, lastY = 0;
 
 			double xpos, ypos;
 			glfwGetCursorPos(window, &xpos, &ypos);
@@ -114,9 +120,9 @@ namespace lve {
 		ubo.proj = lveCam.getProjection();
 		ubo.view = lveCam.getView();
 		ubo.projView = ubo.proj * ubo.view;
-		ubo.camPos = position;
+		ubo.camPos = glm::vec4(position, 0);
 
-		ubo.rotation = rotation;
-		ubo.forward = forward;
+		ubo.rotation = glm::vec4(rotation, 0);
+		ubo.forward = glm::vec4(forward, 0);
 	}
 };	// namespace lve

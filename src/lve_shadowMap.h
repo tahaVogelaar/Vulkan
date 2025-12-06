@@ -1,7 +1,7 @@
 #pragma once
 
-#include "lve_device.hpp"
-#include "lve_pipeline.hpp"
+#include "core/lve_device.hpp"
+#include "core/lve_pipeline.hpp"
 #include <lve_shadow_renderer.h>
 #include "memory"
 #include <vulkan/vulkan.h>
@@ -13,13 +13,13 @@ namespace lve {
 	struct PointLight {
 		glm::mat4 proj;
 		glm::vec3 position;
+		float padding;
 		glm::vec3 rotation;
+		float padding2;
 		float innerCone;
 		float outerCone;
 		float range;
-		float specular;
 		float intensity;
-		float filler;
 	};
 
 	class ShadowMap {
@@ -51,13 +51,13 @@ namespace lve {
 	};
 
 	struct PointLightData {
+		uint32_t index = 0;
 		PointLight light;
 		std::unique_ptr<ShadowMap> shadowMap;
 		bool dirty = true;
 
-		void create()
+		void create(LveDevice& device)
 		{
-
 		}
 
 		void createShadowMap(LvePointShadowRenderer& shadowRenderer, LveDevice& device, VkExtent2D shadowExtent)
@@ -73,14 +73,12 @@ namespace lve {
 			light.proj = lightProj * lightView;
 		}
 
-		void updateBuffer(LveBuffer& buffer)
+		void setShadowEnable(bool enable, lve::LveDevice& device, VkDescriptorSet globalDescriptorSet)
 		{
-			buffer.writeToBuffer(&light, 1 * sizeof(PointLight));
-			buffer.flush();
-		}
+			if (enable)
+				if (!shadowMap)
+					std::cerr << "Shadow Map does not exist" << std::endl;
 
-		void updateDescriptorSet(lve::LveDevice& device, VkDescriptorSet globalDescriptorSet) const
-		{
 			VkDescriptorImageInfo imageInfo;
 			imageInfo.imageView = shadowMap->getImageView();
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -90,7 +88,7 @@ namespace lve {
 			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 			write.dstSet = globalDescriptorSet;
-			write.dstBinding = 4;
+			write.dstBinding = 5;
 			write.pImageInfo = &imageInfo;
 			write.descriptorCount = 1;
 

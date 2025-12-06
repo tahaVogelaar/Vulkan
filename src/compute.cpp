@@ -2,26 +2,8 @@
 
 #include <random>
 
-void Compute::run(VkImage targetImage, VkExtent2D extent)
+void Compute::run(VkImage targetImage, VkCommandBuffer commandBuffer, VkExtent2D extent)
 {
-    // 1. Allocate a one-time command buffer
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = device.getCommandPool();
-    allocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer commandBuffer;
-    if (vkAllocateCommandBuffers(device.device(), &allocInfo, &commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate command buffer!");
-    }
-
-    // 2. Begin command buffer
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
     // 3. Transition main image to GENERAL for compute
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -77,27 +59,6 @@ void Compute::run(VkImage targetImage, VkExtent2D extent)
         0, nullptr,
         1, &barrierToGraphics
     );
-
-    // 7. End command buffer
-    vkEndCommandBuffer(commandBuffer);
-
-    // 8. Submit command buffer with fence
-    VkFence fence;
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    vkCreateFence(device.device(), &fenceInfo, nullptr, &fence);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-
-    vkQueueSubmit(device.computeQueue(), 1, &submitInfo, fence);
-    vkWaitForFences(device.device(), 1, &fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(device.device(), fence, nullptr);
-
-    // 9. Free command buffer
-    vkFreeCommandBuffers(device.device(), device.getCommandPool(), 1, &commandBuffer);
 }
 
 

@@ -8,9 +8,19 @@ device(device), swapchain(swapchain)
 	createPipeline(vertShader, fragShader);
 }
 
-void FullScreenQuat::draw(VkCommandBuffer cmd, int index)
+void FullScreenQuat::draw(VkCommandBuffer cmd, int index, VkDescriptorSet& a)
 {
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
+	vkCmdBindDescriptorSets(
+		cmd,
+		VK_PIPELINE_BIND_POINT_COMPUTE,
+		pipelineLayout,
+		0,
+		1,
+		&a,
+		0,
+		nullptr
+	);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 }
 

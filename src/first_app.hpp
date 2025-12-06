@@ -1,14 +1,14 @@
 #pragma once
 
 #include "lve_shadowMap.h"
-#include "lve_descriptors.hpp"
-#include "lve_device.hpp"
+#include "core/lve_descriptors.hpp"
+#include "core/lve_device.hpp"
 #include "lve_renderer.hpp"
-#include "lve_window.hpp"
-#include "Mesh.h"
+#include "core/lve_window.hpp"
+#include "engineStuff/Scene.h"
 #include "keyboard_movement_controller.hpp"
 #include "lve_frame_info.hpp"
-#include "Texture.h"
+#include "engineStuff/fullScreenQuat.h"
 #include "entt.hpp"
 
 // std
@@ -18,18 +18,18 @@
 #include "simple_render_system.hpp"
 #include "lve_shadowMap.h"
 #include "lve_shadow_renderer.h"
-#include "coreRenderer.h"
-#include "fullScreenQuat.h"
-#include "ObjectLoader.h"
+#include "engineStuff/Scene.h"
+#include "engineStuff/fullScreenQuat.h"
+#include "engineStuff/ObjectLoader.h"
 #include "compute.h"
-
+#include <limits>
 
 namespace lve {
 	class FirstApp {
 	public:
 		int WIDTH = 800;
 		int HEIGHT = 600;
-		uint32_t MAX_OBJECT_COUNT = 512;
+		uint32_t MAX_OBJECT_COUNT = 20'000;
 		FirstApp();
 		~FirstApp();
 
@@ -53,6 +53,7 @@ namespace lve {
 		void build();
 		void initImGui();
 		void loadGameObjects();
+		void loadTexturesIntoDescriptor();
 
 		LveWindow lveWindow{WIDTH, HEIGHT, "Vulkan Tutorial"};
 		LveDevice lveDevice{lveWindow};
@@ -67,12 +68,7 @@ namespace lve {
 		GlobalUbo ubo;
 		std::unique_ptr<LveBuffer> drawSSBO; // ssbo
 		RenderBucket renderBucket{lveDevice, MAX_OBJECT_COUNT, *drawSSBO};
-		LoaderObject objectLoader;
 		std::unique_ptr<RenderSyncSystem> renderSyncSystem;
-
-		// light
-		std::unique_ptr<LveBuffer> pointLightBuffer;
-		VkExtent2D shadowExtent{2024, 2024};
 
 		// a
 		std::unique_ptr<FullScreenQuat> fullScreenQuat;
@@ -83,6 +79,7 @@ namespace lve {
 
 		// textures
 		std::vector<std::unique_ptr<Material> > textures;
+		std::unique_ptr<LveBuffer> materialBuffer;
 
 		// note: order of declarations matters
 		std::unique_ptr<LveDescriptorPool> globalPool{};

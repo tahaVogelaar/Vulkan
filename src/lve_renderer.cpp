@@ -107,7 +107,7 @@ namespace lve {
 			throw std::runtime_error("failed to record command buffer!");
 		}
 
-		auto result = lveSwapChain->submitCommandBuffers(&commandBuffer, &currentImageIndex);
+		auto result = lveSwapChain->submitCommandBuffers(commandBuffer, currentImageIndex);
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ||
 			lveWindow.wasWindowResized())
 		{

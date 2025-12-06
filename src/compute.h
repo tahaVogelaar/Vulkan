@@ -1,10 +1,10 @@
 #pragma once
-#include "lve_device.hpp"
-#include "lve_buffer.hpp"
-#include "lve_pipeline.hpp"
+#include "core/lve_device.hpp"
+#include "core/lve_buffer.hpp"
+#include "core/lve_pipeline.hpp"
 #include <glm/glm.hpp>
-#include "lve_swap_chain.hpp"
-#include "lve_descriptors.hpp"
+#include "core/lve_swap_chain.hpp"
+#include "core/lve_descriptors.hpp"
 #include <memory>
 
 struct Particle {
@@ -37,7 +37,7 @@ public:
 
 	// run time
 	void update(size_t imageIndex);
-	void run(VkImage targetImage, VkExtent2D extent);
+	void run(VkImage targetImage, VkCommandBuffer commandBuffer, VkExtent2D extent);
 
 	uint32_t PARTICLE_COUNT = 50000;
 	VkDeviceSize bufferSize = sizeof(Particle) * PARTICLE_COUNT;

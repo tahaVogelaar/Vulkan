@@ -1,6 +1,6 @@
 #pragma once
-#include "lve_device.hpp"
-#include "lve_swap_chain.hpp"
+#include "core/lve_device.hpp"
+#include "core/lve_swap_chain.hpp"
 #include <array>
 #include <vulkan/vulkan.h>
 #include <memory>

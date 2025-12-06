@@ -1,82 +1,115 @@
 #pragma once
 
+#include "core/lve_buffer.hpp"
+#include "core/lve_device.hpp"
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+
+#include <vector>
+#include <memory>
+#include <unordered_map>
 #include "entt.hpp"
-#include <vulkan/vulkan.h>
-#include "lve_buffer.hpp"
-#include "Mesh.h"
-#include "lve_light.h"
-#include "lve_descriptors.hpp"
+#include "engineStuff/ObjectLoader.h"
 
-#include "imgui.h"
-#include "backends/imgui_impl_glfw.h"
-#include "backends/imgui_impl_vulkan.h"
-#include "imconfig.h"
-#include "imgui_internal.h"
-#include "imstb_rectpack.h"
-#include "imstb_textedit.h"
-#include "imstb_truetype.h"
 
+// stuff you send to the gpu
 struct InstanceData {
 	glm::mat4 model;
-	uint32_t materialId;
-	uint32_t _pad[3];
+	uint32_t primId;
+	uint32_t materialID;
+	uint32_t _pad[2];
 };
 
-struct MeshComponent {
-	uint32_t materialId = 0;
+// i dont wanna explain this
+struct CpuObject {
+	entt::entity entity;
+	entt::entity parent;
 };
 
-struct DefaultObjectData {
-	entt::entity parent = entt::null;
-	std::vector<entt::entity> children;
-	Handle handle;
-	bool dirty = true;
+// send this to RenderBucket
+struct BucketSendData {
+	glm::mat4 model;
+	int32_t primitiveID;
+	int32_t materialID;
+	entt::entity entity;
+	entt::entity parent;
 };
 
-class RenderSyncSystem {
+	struct Handle {
+		int32_t index = -1;
+		int32_t generation = -1;
+
+		bool operator==(const Handle &v) const {
+			return (index == v.index && generation == v.generation);
+		}
+	};
+
+class RenderBucket {
 public:
-	RenderSyncSystem(RenderBucket& bucket, lve::LveDevice& device, lve::LveDescriptorSetLayout& descriptor, LoaderObject& objectLoader);
-	~RenderSyncSystem() = default;
+	RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO);
+	RenderBucket(const RenderBucket &) = delete;
+	RenderBucket &operator=(const RenderBucket &) = delete;
 
-	void renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDTH, int HEIGHT);
-	void syncToRenderBucket(VkDescriptorSet& descriptor, lve::LveBuffer& buffer);
-	void updateAllTransforms();
+	void loadMeshes(std::vector<Primitive>& builders);
+	Handle addInstance(BucketSendData &item);
+	void deleteInstance(Handle h);
+	void updateSSBO(lve::LveBuffer& objectSSBOA);
+	InstanceData* get(const Handle& h) {
+		if (h.index >= bucket.size()) return nullptr;
+		if (generations[h.index] != h.generation) return nullptr; // stale handle
+		return &bucket[h.index];
+	}
 
-	// get stuff
-	entt::registry& getRegistery() {return registry; }
-	lve::LvePointShadowRenderer& getPointShadowRenderer() const {return *pointShadowRenderer; }
-	lve::PointLightData& getLightIndex(uint32_t index) { return *pointLigts[index]; }
-	std::vector<lve::PointLightData*>& getPointLights() {return pointLigts;}
+	void update(double deltaTime, lve::LveBuffer& objectSSBO);
+	void render(VkCommandBuffer commandBuffer);
+	std::unique_ptr<lve::LveBuffer> stagingBuffer;
+
+	TextureHandler& getTextureHandler() {return textureHandler; }
+	LoaderObject& getObjectLoader() { return objectLoader; }
 
 private:
-	void updateTransformRecursive(entt::entity entity, const glm::mat4& parentMatrix, bool parentDirty);
+	lve::LveDevice &lveDevice;
+	lve::LveBuffer& objectSSBO;
 
-	// imgui
-	void drawChildren(entt::entity entity);
-	void createObject(entt::entity parent, int32_t object = -1);
-	void addLightComponent(entt::entity entity);
-	void removeLightComponent(entt::entity entity);
-	void deleteObject(entt::entity entity);
+	TextureHandler textureHandler{lveDevice};
+	LoaderObject objectLoader{textureHandler};
 
-	// main stuff
-	entt::registry registry;
-	RenderBucket& renderBucket;
-	lve::LveDevice& device;
-	LoaderObject& objectLoader;
+	std::vector<Primitive> builder;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 
-	// dirty bucket
-	std::vector<entt::entity> dirtyLight;
+	std::unordered_map<uint32_t, uint32_t> objectTypeIndex; // this is the batch it creates every
+	std::vector<InstanceData> bucket; // holds drawable objects (unsorted)
+	std::vector<InstanceData> sortedBucket; // sorts bucket every frame
+	std::vector<CpuObject> cpuBucket;
 
-	// light
-	std::vector<lve::PointLightData*> pointLigts;
-	std::unique_ptr<lve::LvePointShadowRenderer> pointShadowRenderer;
-	std::string shadowVert = "/home/taha/CLionProjects/untitled4/shaders/shadow.vert", shadowFrag = "/home/taha/CLionProjects/untitled4/shaders/shadow.frag";
+	std::vector<bool> deadList;
+	std::vector<int32_t> generations; // stores how many times that slot has been reused
+	std::vector<int32_t> freeList; // holds indices of deleted slots that can be reused
 
+	uint32_t MAX_DRAW;
+	uint32_t OBJECT_TYPES;
 
-	bool enableEditor = false;
-	entt::entity currentEntity = entt::null, pastCurrentEntity = entt::null;
+	std::vector<Vertex> totalVertex;
+	std::vector<uint32_t> totalIndex;
+
+	std::unique_ptr<lve::LveBuffer> vertexBuffer;
+	std::unique_ptr<lve::LveBuffer> indexBuffer;
+	std::vector<VkDrawIndexedIndirectCommand> drawCommands;
+	std::unique_ptr<lve::LveBuffer> drawCommandsBuffer;
+
+	void createVertexBuffers(const std::vector<Vertex> &vertices);
+	void createIndexBuffers(const std::vector<uint32_t> &indices);
+	void ensureBufferCapacity(uint32_t requiredCommandCount);
+	void createDrawCommand();
+
+public:
+	static std::vector<VkVertexInputBindingDescription> getBindingDescriptions();
+
+	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
+
+	static std::vector<VkVertexInputBindingDescription> getBindingDescriptionsShadow();
+
+	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptionsShadow();
 };

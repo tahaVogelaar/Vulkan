@@ -1,8 +1,8 @@
 #pragma once
 
-#include "lve_device.hpp"
+#include "core/lve_device.hpp"
 #include "lve_frame_info.hpp"
-#include "lve_pipeline.hpp"
+#include "core/lve_pipeline.hpp"
 
 // std
 #include <memory>

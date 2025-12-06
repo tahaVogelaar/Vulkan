@@ -56,28 +56,27 @@ namespace lve {
 		);
 
 		// copy main to swapchain
-		VkImageCopy copyRegion{};
-		copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		copyRegion.srcSubresource.baseArrayLayer = 0;
-		copyRegion.srcSubresource.layerCount = 1;
-		copyRegion.srcSubresource.mipLevel = 0;
-		copyRegion.srcOffset = {0, 0, 0};
+		VkImageBlit blit{};
+		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.mipLevel = 0;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.layerCount = 1;
+		blit.srcOffsets[0] = {0, 0, 0};
+		blit.srcOffsets[1] = {static_cast<int32_t>(swapChainExtent.width), static_cast<int32_t>(swapChainExtent.height), 1};
 
-		copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		copyRegion.dstSubresource.baseArrayLayer = 0;
-		copyRegion.dstSubresource.layerCount = 1;
-		copyRegion.dstSubresource.mipLevel = 0;
-		copyRegion.dstOffset = {0, 0, 0};
+		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.dstSubresource.mipLevel = 0;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.layerCount = 1;
+		blit.dstOffsets[0] = {0, 0, 0};
+		blit.dstOffsets[1] = {static_cast<int32_t>(swapChainExtent.width), static_cast<int32_t>(swapChainExtent.height), 1};
 
-		copyRegion.extent.width  = swapChainExtent.width;
-		copyRegion.extent.height = swapChainExtent.height;
-		copyRegion.extent.depth  = 1;
-
-		vkCmdCopyImage(
+		vkCmdBlitImage(
 			commandBuffer,
 			mainImages[index], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			swapChainImages[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			1, &copyRegion
+			1, &blit,
+			VK_FILTER_NEAREST
 		);
 
 		// barrier
@@ -227,15 +226,15 @@ namespace lve {
 		return result;
 	}
 
-	VkResult LveSwapChain::submitCommandBuffers(const VkCommandBuffer *buffers, uint32_t *imageIndex)
+	VkResult LveSwapChain::submitCommandBuffers(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 	{
-		copyMainToSwapChain(*imageIndex);
+		copyMainToSwapChain(imageIndex);
 
-		if (imagesInFlight[*imageIndex] != VK_NULL_HANDLE)
+		if (imagesInFlight[imageIndex] != VK_NULL_HANDLE)
 		{
-			vkWaitForFences(device.device(), 1, &imagesInFlight[*imageIndex], VK_TRUE, UINT64_MAX);
+			vkWaitForFences(device.device(), 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
 		}
-		imagesInFlight[*imageIndex] = inFlightFences[currentFrame];
+		imagesInFlight[imageIndex] = inFlightFences[currentFrame];
 
 		VkSubmitInfo submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -247,12 +246,32 @@ namespace lve {
 		submitInfo.pWaitDstStageMask = waitStages;
 
 		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = buffers;
+		submitInfo.pCommandBuffers = &commandBuffer;
 
 		VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
+		// compute
+		/*VkSubmitInfo ComputesubmitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+		VkSemaphore ComputewaitSemaphores[] = {computeFinishedSemaphores[currentFrame]};
+		VkPipelineStageFlags ComputewaitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+		ComputesubmitInfo.waitSemaphoreCount = 1;
+		ComputesubmitInfo.pWaitSemaphores = ComputewaitSemaphores;
+		ComputesubmitInfo.pWaitDstStageMask = ComputewaitStages;
+
+		ComputesubmitInfo.commandBufferCount = 1;
+		ComputesubmitInfo.pCommandBuffers = &commandBuffer;
+
+		VkSemaphore ComputesignalSemaphores[] = {computeFinishedSemaphores[currentFrame]};
+		ComputesubmitInfo.signalSemaphoreCount = 1;
+		ComputesubmitInfo.pSignalSemaphores = ComputesignalSemaphores;
+
+		if (vkQueueSubmit(device.computeQueue(), 1, &ComputesubmitInfo, nullptr) != VK_SUCCESS) {
+			throw std::runtime_error("failed to submit compute command buffer!");
+		};*/
 		vkResetFences(device.device(), 1, &inFlightFences[currentFrame]);
 		if (vkQueueSubmit(device.graphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) !=
 			VK_SUCCESS)
@@ -270,7 +289,7 @@ namespace lve {
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = swapChains;
 
-		presentInfo.pImageIndices = imageIndex;
+		presentInfo.pImageIndices = &imageIndex;
 
 		auto result = vkQueuePresentKHR(device.presentQueue(), &presentInfo);
 
@@ -534,7 +553,7 @@ namespace lve {
 			imageInfo.format = depthFormat;
 			imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 			imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 			imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 			imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 			imageInfo.flags = 0;
@@ -561,6 +580,17 @@ namespace lve {
 				throw std::runtime_error("failed to create depth image view!");
 			}
 		}
+
+		VkSamplerCreateInfo samplerInfo{};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.magFilter = VK_FILTER_LINEAR;
+		samplerInfo.minFilter = VK_FILTER_LINEAR;
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+		vkCreateSampler(device.device(), &samplerInfo, nullptr, &depthSampler);
 	}
 
 	void LveSwapChain::createSyncObjects()
@@ -595,7 +625,7 @@ namespace lve {
 	{
 		for (const auto &availableFormat: availableFormats)
 		{
-			if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
+			if (availableFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
 				availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 			{
 				return availableFormat;
@@ -621,7 +651,7 @@ namespace lve {
 		{
 			if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
 			{
-				std::cout << "Present mode: Immediate" << std::endl;
+				//std::cout << "Present mode: Immediate" << std::endl;
 				return availablePresentMode;
 			}
 		}

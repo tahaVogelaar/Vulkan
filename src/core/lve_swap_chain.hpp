@@ -38,7 +38,9 @@ namespace lve {
 		VkFramebuffer getFrameBuffer(int index) { return swapChainFramebuffers[index]; }
 		VkRenderPass getRenderPass() { return renderPass; }
 
+		VkImage getDepthImage(int index) { return depthImages[index]; }
 		VkImageView getDepthImageView(int index) { return depthImageViews[index]; }
+		VkSampler getDepthSampler() {return depthSampler;}
 
 		size_t imageCount() { return swapChainImages.size(); }
 		VkExtent2D getSwapChainExtent() { return swapChainExtent; }
@@ -52,11 +54,11 @@ namespace lve {
 		}
 
 		VkFormat findDepthFormat();
-		static VkFormat getImageFormat() { return VK_FORMAT_R8G8B8A8_UNORM; }
+		static VkFormat getImageFormat() { return VK_FORMAT_R16G16B16A16_SFLOAT; }
 
 		VkResult acquireNextImage(uint32_t *imageIndex);
 
-		VkResult submitCommandBuffers(const VkCommandBuffer *buffers, uint32_t *imageIndex);
+		VkResult submitCommandBuffers(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
 		bool compareSwapFormats(const LveSwapChain &swapChain) const
 		{
@@ -99,9 +101,12 @@ namespace lve {
 		std::vector<VkFramebuffer> swapChainFramebuffers;
 		VkRenderPass renderPass;
 
+		// depth
 		std::vector<VkImage> depthImages;
-		std::vector<VkDeviceMemory> depthImageMemorys;
+		VkSampler depthSampler;
 		std::vector<VkImageView> depthImageViews;
+		std::vector<VkDeviceMemory> depthImageMemorys;
+
 		std::vector<VkImage> swapChainImages;
 		std::vector<VkImageView> swapChainImageViews;
 		std::vector<VkImage> mainImages;
@@ -118,6 +123,10 @@ namespace lve {
 		std::vector<VkSemaphore> renderFinishedSemaphores;
 		std::vector<VkFence> inFlightFences;
 		std::vector<VkFence> imagesInFlight;
+
+		std::vector<VkFence> computeInFlightFences;
+		std::vector<VkSemaphore> computeFinishedSemaphores;
+
 		size_t currentFrame = 0;
 	};
 } // namespace lve

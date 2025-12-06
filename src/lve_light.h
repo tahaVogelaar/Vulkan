@@ -1,6 +1,6 @@
 #pragma once
-#include "lve_device.hpp"
-#include "lve_buffer.hpp"
+#include "core/lve_device.hpp"
+#include "core/lve_buffer.hpp"
 #include "lve_shadowMap.h"
 
 #include <glm/glm.hpp>

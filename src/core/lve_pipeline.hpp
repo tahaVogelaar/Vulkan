@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "Mesh.h"
+#include "../coreRenderer.h"
 
 namespace lve {
 	struct PipelineConfigInfo {

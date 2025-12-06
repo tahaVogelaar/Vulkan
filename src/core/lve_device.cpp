@@ -169,13 +169,13 @@ namespace lve {
 			queueCreateInfos.push_back(queueCreateInfo);
 		}
 
-		// Core Vulkan 1.0 features
-		VkPhysicalDeviceFeatures deviceFeatures{};
-		deviceFeatures.samplerAnisotropy = VK_TRUE;
-		deviceFeatures.multiDrawIndirect = VK_TRUE;
-		deviceFeatures.depthClamp = VK_TRUE;
+		// sync2 feature (extension)
+		VkPhysicalDeviceSynchronization2Features sync2Feature{};
+		sync2Feature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+		sync2Feature.synchronization2 = VK_TRUE;
+		sync2Feature.pNext = nullptr;
 
-		// Vulkan 1.2 features (includes descriptor indexing)
+		// Vulkan 1.2 features
 		VkPhysicalDeviceVulkan12Features deviceFeatures12{};
 		deviceFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 		deviceFeatures12.runtimeDescriptorArray = VK_TRUE;
@@ -183,35 +183,44 @@ namespace lve {
 		deviceFeatures12.descriptorBindingVariableDescriptorCount = VK_TRUE;
 		deviceFeatures12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 		deviceFeatures12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+		deviceFeatures12.pNext = &sync2Feature; // chain sync2 AFTER 1.2
 
 		// Vulkan 1.1 features
 		VkPhysicalDeviceVulkan11Features deviceFeatures11{};
 		deviceFeatures11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
 		deviceFeatures11.shaderDrawParameters = VK_TRUE;
-		deviceFeatures11.pNext = &deviceFeatures12;
+		deviceFeatures11.pNext = &deviceFeatures12; // chain 1.2 AFTER 1.1
 
-		// Logical device create info
+		// Core Vulkan 1.0 features (zero-init then set needed flags)
+		VkPhysicalDeviceFeatures deviceFeatures{};
+		deviceFeatures.samplerAnisotropy = VK_TRUE;
+		deviceFeatures.multiDrawIndirect = VK_TRUE;
+		deviceFeatures.depthClamp = VK_TRUE;
+
+		// Device create info
 		VkDeviceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		createInfo.pNext = &deviceFeatures11; // correct chain start: 1.1 -> 1.2 -> sync2
+		createInfo.pEnabledFeatures = &deviceFeatures;
 		createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 		createInfo.pQueueCreateInfos = queueCreateInfos.data();
-		createInfo.pEnabledFeatures = &deviceFeatures;
 		createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
 		createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-		createInfo.pNext = &deviceFeatures11; // chain 1.1 -> 1.2
+		createInfo.flags = 0; // required by spec
 
 		if (enableValidationLayers)
 		{
-			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-			createInfo.ppEnabledLayerNames = validationLayers.data();
-		} else
+		    createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+		    createInfo.ppEnabledLayerNames = validationLayers.data();
+		}
+		else
 		{
-			createInfo.enabledLayerCount = 0;
+		    createInfo.enabledLayerCount = 0;
 		}
 
 		if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device_) != VK_SUCCESS)
 		{
-			throw std::runtime_error("failed to create logical device!");
+		    throw std::runtime_error("failed to create logical device!");
 		}
 
 		vkGetDeviceQueue(device_, indices.graphicsFamily, 0, &graphicsQueue_);
@@ -509,7 +518,7 @@ namespace lve {
 
 		if (vkAllocateMemory(device_, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
 		{
-			throw std::runtime_error("failed to allocate vertex buffer memory!");
+			throw std::runtime_error("failed to allocate buffer memory!");
 		}
 
 		vkBindBufferMemory(device_, buffer, bufferMemory, 0);

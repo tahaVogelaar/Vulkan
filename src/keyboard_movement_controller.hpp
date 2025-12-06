@@ -2,15 +2,16 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include "lve_window.hpp"
+#include "core/lve_window.hpp"
 
 struct GlobalUbo {
 	glm::mat4 view;
 	glm::mat4 proj;
 	glm::mat4 projView;
-	alignas(16) glm::vec3 camPos = glm::vec3(0);
-	alignas(16) glm::vec3 rotation = glm::vec3(0);
-	alignas(16) glm::vec3 forward = glm::vec3(0);
+	glm::vec4 camPos;
+	glm::ivec4 lightData;
+	glm::vec4 rotation;
+	glm::vec4 forward;
 };
 
 namespace lve {
@@ -36,5 +37,6 @@ namespace lve {
 		float lookSpeed{0.1f};
 		float fov = 70.f, aspect = 1.f, nearPlane = .1f, farPlane = 1000.f;
 		bool firstMouse = true;
+		double lastX, lastY;
 	};
 } // namespace lve

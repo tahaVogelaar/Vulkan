@@ -1,340 +1,383 @@
 #include "coreRenderer.h"
+
+#include "utils/engineUtilTools.h"
+
+// libs
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
+
+// std
+#include <algorithm>
+#include <cassert>
+#include <cstring>
 #include <iostream>
-#include <glm/gtc/type_ptr.hpp>
+#include <unordered_set>
 
-RenderSyncSystem::RenderSyncSystem(RenderBucket &bucket, lve::LveDevice &device,
-									lve::LveDescriptorSetLayout& descriptor, LoaderObject& objectLoader) :
-renderBucket(bucket), device(device), objectLoader(objectLoader)
+RenderBucket::RenderBucket(lve::LveDevice &device, uint32_t MAX_DRAW, lve::LveBuffer& objectSSBO) :
+	lveDevice(device), objectSSBO(objectSSBO), MAX_DRAW(MAX_DRAW)
 {
-	pointShadowRenderer = std::make_unique<lve::LvePointShadowRenderer>(device, shadowVert, shadowFrag,
-																		descriptor.getDescriptorSetLayout(),
-																		RenderBucket::getBindingDescriptionsShadow,
-																		RenderBucket::getAttributeDescriptionsShadow);
+	// create draw buffer
+	uint32_t commandSize = sizeof(VkDrawIndexedIndirectCommand);
+	VkDeviceSize bufferSize = commandSize * MAX_DRAW;
+
+	drawCommandsBuffer = std::make_unique<lve::LveBuffer>(
+		lveDevice,
+		commandSize,
+		MAX_DRAW,
+		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
 }
 
-void RenderSyncSystem::drawChildren(entt::entity entity)
+void RenderBucket::loadMeshes(std::vector<Primitive>& builders)
 {
-	auto& data = registry.get<DefaultObjectData>(entity);
-	std::string objName = "Object " + std::to_string((uint32_t)entity);
+	builder = builders;
+	drawCommands.clear();
+	vertices.clear();
+	indices.clear();
 
-	ImGui::PushID((int)entity);
+	OBJECT_TYPES = 0;
 
-	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-	if (data.children.empty())
-		flags |= ImGuiTreeNodeFlags_Leaf;
-	if (currentEntity == entity)
-		flags |= ImGuiTreeNodeFlags_Selected;
-
-	bool open = ImGui::TreeNodeEx(objName.c_str(), flags);
-
-	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-		currentEntity = entity;
-		enableEditor = true;
-	}
-
-	ImGui::SameLine();
-	std::string addBtn = "+##" + std::to_string((uint32_t)entity);
-	if (ImGui::Button(addBtn.c_str()))
-		createObject(entity);
-
-	if (open)
+	for (size_t i = 0; i < builders.size(); i++)
 	{
-		for (auto child : data.children)
-			if (child != entt::null)
-				drawChildren(child);
-		ImGui::TreePop();
+		for (auto& v : builder[i].vertices) vertices.push_back(v);
+		for (auto i : builder[i].indices) indices.push_back(i);
+		OBJECT_TYPES++;
 	}
 
-	ImGui::PopID();
+	createVertexBuffers(vertices);
+	createIndexBuffers(indices);
+
+	stagingBuffer = std::make_unique<lve::LveBuffer>(
+	lveDevice,
+	sizeof(VkDrawIndexedIndirectCommand) * OBJECT_TYPES,
+	1,
+	VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+);
+	stagingBuffer->map();
 }
 
-void RenderSyncSystem::renderImGuiWindow(VkCommandBuffer commandBuffer, int WIDTH, int HEIGHT)
+
+void RenderBucket::render(VkCommandBuffer commandBuffer)
 {
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
+	VkBuffer vertexBuffers[] = {vertexBuffer->getBuffer()};
+	VkDeviceSize offsets[] = {0};
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+	vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-	ImGui::Begin(std::to_string(registry.view<DefaultObjectData>().size()).c_str(), nullptr,
-		ImGuiWindowFlags_NoResize |
-		ImGuiWindowFlags_NoCollapse |
-		ImGuiWindowFlags_NoMove);
-	ImGui::SetWindowSize(ImVec2(WIDTH / 4.f, HEIGHT));
-	ImGui::SetWindowPos(ImVec2(0, 0));
-
-	static bool menuOpen = false;
-	if (ImGui::Button("Create Object", ImVec2(WIDTH / 4.f - 15, 20)))
-		menuOpen = !menuOpen; // toggle open/close
-
-
-	static int selectedItem = -1;
-	if (menuOpen) {
-		ImGui::BeginChild("MenuList", ImVec2(150, 0), true);
-
-		for (size_t i = 0; i < objectLoader.getStructures().size(); i++)
-		{
-			if (objectLoader.getStructures()[i].parent != -1) continue;
-			if (ImGui::Button(objectLoader.getStructures()[i].name.c_str()))
-			{
-				createObject(entt::null, objectLoader.getStructures()[i].index);
-				menuOpen = false;
-			}
-		}
-
-		ImGui::EndChild();
-	}
-
-
-	auto view = registry.view<DefaultObjectData>();
-	for (auto [entity, data] : view.each())
-	{
-		if (data.parent != entt::null) continue;
-
-		drawChildren(entity);
-	}
-
-	ImGui::End();
-
-	if (enableEditor && currentEntity != entt::null)
-	{
-		ImGui::Begin("Properties", nullptr,
-					ImGuiWindowFlags_::ImGuiWindowFlags_NoResize | ImGuiWindowFlags_::ImGuiWindowFlags_NoCollapse |
-					ImGuiWindowFlags_::ImGuiWindowFlags_NoMove);
-		ImGui::SetWindowSize(ImVec2(WIDTH / 4.f, HEIGHT));
-		ImGui::SetWindowPos(ImVec2(WIDTH - WIDTH / 4.f, 0));
-
-		auto &data = registry.get<DefaultObjectData>(currentEntity);
-		data.dirty = true;
-
-		if (auto *transform = registry.try_get<TransformComponent>(currentEntity))
-		{
-			ImGui::Text("Transform");
-			ImGui::DragFloat3("Position", &transform->translation.x, 0.1f);
-
-			glm::vec3 rotationRadians = transform->rotation;
-			glm::vec3 rotationDegrees = glm::degrees(rotationRadians);
-			if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), 1.0f)) {
-				// Convert back to radians for internal use
-				rotationRadians = glm::radians(rotationDegrees);
-				transform->rotation = rotationRadians;
-			}
-			ImGui::DragFloat3("Scale", &transform->scale.x, 0.1f);
-			transform->dirty = true;
-		}
-
-		if (auto *mesh = registry.try_get<MeshComponent>(currentEntity))
-		{
-			ImGui::Spacing();
-			ImGui::Spacing();
-			ImGui::Text("Mesh ID");
-			if (ImGui::Button("<", ImVec2(20, 20)) && mesh->materialId > 0)
-				mesh->materialId--;
-			ImGui::SameLine();
-			ImGui::Text(std::to_string(mesh->materialId).c_str());
-			ImGui::SameLine();
-			if (ImGui::Button(">", ImVec2(20, 20)))
-				mesh->materialId++;
-		}
-
-		if (auto *light = registry.try_get<lve::PointLightData>(currentEntity))
-		{
-			ImGui::PushID(2);
-			ImGui::Spacing();
-			ImGui::Spacing();
-
-			ImGui::Text("Light");
-			ImGui::SameLine();
-			if (ImGui::Button("-", ImVec2(20, 20)))
-				removeLightComponent(currentEntity);
-
-			ImGui::DragFloat3("Rotation", &light->light.rotation.x, 0.1f);
-			ImGui::DragFloat("Inner Cone", &light->light.innerCone, 0.001f, 0, 1);
-			ImGui::DragFloat("Outer Cone", &light->light.outerCone, 0.001f, 0, 1);
-			ImGui::DragFloat("Intensity", &light->light.intensity, 0.001f, 0, 5);
-			ImGui::DragFloat("Specular", &light->light.specular, 0.001f, 0, 5);
-
-			light->update();
-			dirtyLight.push_back(currentEntity);
-
-			ImGui::PopID();
-		}
-
-		ImGui::Spacing();
-		ImGui::Spacing();
-		ImGui::Spacing();
-		ImGui::Spacing();
-
-		if (ImGui::Button("Delete"))
-		{
-			deleteObject(currentEntity);
-			enableEditor = false;
-		}
-
-		ImGui::BeginChild("ComponentList",
-						ImVec2(), // size of the child region
-						true, // border
-						ImGuiWindowFlags_HorizontalScrollbar);
-
-		if (!registry.try_get<lve::PointLightData>(currentEntity))
-			if (ImGui::Selectable("Point Light"))
-				addLightComponent(currentEntity);
-
-		ImGui::EndChild();
-
-		ImGui::End();
-	}
-
-	ImGui::Render();
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+	vkCmdDrawIndexedIndirect(
+		commandBuffer,
+		drawCommandsBuffer->getBuffer(),
+		0,
+		static_cast<uint32_t>(drawCommands.size()),
+		sizeof(VkDrawIndexedIndirectCommand));
 }
 
-void RenderSyncSystem::deleteObject(entt::entity entity) {
-	if (!registry.valid(entity))
-		return;
+void RenderBucket::update(double deltaTime, lve::LveBuffer& objectSSBOA)
+{
+	// stuff
+	drawCommands.clear();
+	drawCommands.reserve(OBJECT_TYPES);
+	sortedBucket.clear();
+	sortedBucket.reserve(bucket.size());
 
-	auto& data = registry.get<DefaultObjectData>(entity);
+	for (uint32_t i = 0; i < OBJECT_TYPES; i++)
+		objectTypeIndex[i] = 0;
 
-	// Copy children first, since we'll be modifying registry during recursion
-	auto childrenCopy = data.children;
+	for (uint32_t i = 0; i < bucket.size(); i++)
+	{
+		if (!deadList[i]) continue;
+		objectTypeIndex[bucket[i].primId]++;
+		sortedBucket.push_back(bucket[i]);
+	}
 
-	// Remove self from parent’s child list
-	if (data.parent != entt::null && registry.valid(data.parent)) {
-		auto& parentData = registry.get<DefaultObjectData>(data.parent);
-		parentData.children.erase(
-			std::remove(parentData.children.begin(), parentData.children.end(), entity),
-			parentData.children.end()
+	std::sort(sortedBucket.begin(), sortedBucket.end(),
+		[](const InstanceData& a, const InstanceData& b){ return a.primId < b.primId; });
+
+	uint32_t firstIndex = 0;
+	int32_t vertexOffset = 0;
+	uint32_t runningBaseInstance = 0;
+	for (int i = 0; i < OBJECT_TYPES; i++)
+	{
+		uint32_t instancesForThisMaterial = objectTypeIndex[i];
+
+		VkDrawIndexedIndirectCommand cmd{
+			static_cast<uint32_t>(builder[i].indices.size()),   // indexCount
+			instancesForThisMaterial,                           // instanceCount
+			firstIndex,                                         // firstIndex
+			vertexOffset,                                       // vertexOffset
+			runningBaseInstance                                 // firstInstance
+		};
+		drawCommands.push_back(cmd);
+
+		// offsets
+		firstIndex += static_cast<uint32_t>(builder[i].indices.size());
+		vertexOffset += static_cast<int32_t>(builder[i].vertices.size());
+		runningBaseInstance += instancesForThisMaterial;
+
+		/*std::cout << builder[i].indices.size() << '\n' <<
+		instancesForThisMaterial << '\n' <<
+		firstIndex << '\n' <<
+		vertexOffset << '\n' <<
+		runningBaseInstance << "\n\n";*/
+	}
+		//std::cout << "=============--------------=============\n\n";
+
+	updateSSBO(objectSSBOA);
+    createDrawCommand();
+}
+
+void RenderBucket::updateSSBO(lve::LveBuffer& objectSSBOA)
+{
+
+	if (bucket.empty()) return;
+	if (objectSSBOA.getMappedMemory() == nullptr)
+	{
+		objectSSBOA.map();
+	}
+
+	objectSSBOA.writeToBuffer(sortedBucket.data(), VK_WHOLE_SIZE);
+	objectSSBOA.flush(VK_WHOLE_SIZE);
+
+
+	for (size_t i = 0; i < bucket.size(); i++) {
+		//if (bucket[i].dirty)
+		//{
+		//objectSSBOA.writeToIndex(&bucket[i], i);
+		//objectSSBOA.flush(alignedSize, i * alignedSize);
+		//	bucket[i].dirty = false;
+		//}
+	}
+
+}
+ //
+void RenderBucket::createDrawCommand()
+{
+	if (drawCommands.empty()) return;
+	VkDeviceSize bufferSize = static_cast<VkDeviceSize>(drawCommands.size()) * sizeof(VkDrawIndexedIndirectCommand);
+
+	stagingBuffer->writeToBuffer(drawCommands.data());
+	lveDevice.copyBuffer(stagingBuffer->getBuffer(), drawCommandsBuffer->getBuffer(), bufferSize);
+}
+
+void RenderBucket::deleteInstance(Handle h)
+{
+	if (h.index >= bucket.size()) return;
+	generations[h.index]++; // invalidate handle
+	freeList.push_back(h.index);
+	deadList[h.index] = false;
+}
+
+Handle RenderBucket::addInstance( BucketSendData& item)
+{
+	InstanceData o;
+	o.model = item.model;
+	o.primId = item.primitiveID;
+	o.materialID = item.materialID;
+
+	CpuObject c;
+	c.entity = item.entity;
+	c.parent = item.parent;
+
+	int32_t index = 0;
+	if (!freeList.empty()) {
+		index = freeList.back();
+		freeList.pop_back();
+		// reuse slot: overwrite both vectors
+		bucket[index] = o;
+		deadList[index] = true;
+		cpuBucket[index] = c;
+		// generation stays as-is (the handle returned must use current generation)
+	} else {
+		index = static_cast<uint32_t>(bucket.size());
+		bucket.push_back(o);
+		cpuBucket.push_back(c);
+		generations.push_back(0); // new slot generation starts at 0
+		deadList.push_back(true);
+	}
+
+	return Handle{ index, generations[index] };
+}
+
+
+void RenderBucket::ensureBufferCapacity(uint32_t requiredCommandCount)
+{
+	const VkDeviceSize commandSize = sizeof(VkDrawIndexedIndirectCommand);
+	VkDeviceSize requiredBytes = static_cast<VkDeviceSize>(requiredCommandCount) * commandSize;
+	VkDeviceSize currBytes = static_cast<VkDeviceSize>(MAX_DRAW) * commandSize; // MAX_DRAW stores number of commands capacity
+
+	if (requiredBytes <= currBytes) return;
+
+	// New capacity: double the command count or just enough to hold required
+	uint32_t newCommandCapacity = static_cast<uint32_t>(std::max(requiredBytes / commandSize, currBytes / commandSize * 2));
+	if (newCommandCapacity == 0) newCommandCapacity = requiredCommandCount;
+
+	auto newBuffer = std::make_unique<lve::LveBuffer>(
+		lveDevice,
+		static_cast<uint32_t>(commandSize),
+		newCommandCapacity,
+		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
+
+	// Copy old data (if any) — copy old byte size
+	if (drawCommandsBuffer)
+	{
+		lveDevice.copyBuffer(
+			drawCommandsBuffer->getBuffer(),
+			newBuffer->getBuffer(),
+			currBytes
 		);
 	}
 
-	// Recursively delete children (safe from modification)
-	for (auto child : childrenCopy) {
-		if (registry.valid(child))
-			deleteObject(child);
-	}
-
-	// Remove from GPU/render data
-	if (data.handle != Handle{-1, -1})
-		renderBucket.deleteInstance(data.handle);
-
-	// Destroy self
-	registry.destroy(entity);
+	// swap and update capacity
+	drawCommandsBuffer = std::move(newBuffer);
+	MAX_DRAW = newCommandCapacity;
+	std::cout << "MAX DRAW: " << MAX_DRAW << '\n';
 }
 
 
 
-void RenderSyncSystem::createObject(entt::entity parent, int32_t object)
+
+
+
+void RenderBucket::createVertexBuffers(const std::vector<Vertex> &vertices)
 {
-	entt::entity e = registry.create();
-	TransformComponent& a = registry.emplace<TransformComponent>(e);
+	uint32_t vertexCount = static_cast<uint32_t>(vertices.size());
+	assert(vertexCount >= 3 && "Vertex count must be at least 3");
+	uint32_t vertexSize = sizeof(vertices[0]);
+	VkDeviceSize bufferSize = vertexSize * vertexCount;
 
-	a.translation = objectLoader.getStructures()[object].transform.translation;
-	a.rotation = objectLoader.getStructures()[object].transform.rotation;
-	a.scale = objectLoader.getStructures()[object].transform.scale;
-	a.mat4();
+	lve::LveBuffer stagingBuffer{
+		lveDevice,
+		vertexSize,
+		vertexCount,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	};
 
+	stagingBuffer.map();
+	stagingBuffer.writeToBuffer((void *) vertices.data());
 
-	DefaultObjectData aaAA{};
-	aaAA.parent = parent;
-	aaAA.handle = Handle{-1, -1};
-	aaAA.dirty = false;
-	auto& dataA = registry.emplace<DefaultObjectData>(e, aaAA);
-	if (parent != entt::null)
-		registry.get<DefaultObjectData>(parent).children.push_back(e);
+	vertexBuffer = std::make_unique<lve::LveBuffer>(
+		lveDevice,
+		vertexSize,
+		vertexCount,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	for (auto& i : objectLoader.getStructures()[object].childeren)
-		createObject(e, i);
-
-
-	if (objectLoader.getStructures()[object].ID != -1)
-		registry.emplace<MeshComponent>(e, objectLoader.getStructures()[object].ID);
-	else
-	{
-
-		std::cout << objectLoader.getStructures()[object].ID << '\n';
-		return;
-	}
-
-
-	BucketSendData data{};
-	data.model = a.worldMatrix;
-	data.materialId = objectLoader.getStructures()[object].ID;
-	data.entity = e;
-	data.parent = parent;
-	Handle handle = renderBucket.addInstance(data);
-	dataA.handle = handle;
+	lveDevice.copyBuffer(stagingBuffer.getBuffer(), vertexBuffer->getBuffer(), bufferSize);
 }
 
-void RenderSyncSystem::addLightComponent(entt::entity entity)
+void RenderBucket::createIndexBuffers(const std::vector<uint32_t> &indices)
 {
-	lve::PointLightData& light = registry.emplace<lve::PointLightData>(entity);
+	uint32_t indexCount = static_cast<uint32_t>(indices.size());
 
-	light.light.innerCone = .95f;
-	light.light.outerCone = .9f;
-	light.light.intensity = 1;
-	light.light.specular = 1;
+	VkDeviceSize bufferSize = sizeof(indices[0]) * indexCount;
+	uint32_t indexSize = sizeof(indices[0]);
 
-	light.update();
-	light.createShadowMap(*pointShadowRenderer, device, VkExtent2D{2024, 2024});
-	pointLigts.push_back(&light);
+	lve::LveBuffer stagingBuffer{
+		lveDevice,
+		indexSize,
+		indexCount,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	};
+
+	stagingBuffer.map();
+	stagingBuffer.writeToBuffer((void *) indices.data());
+
+	indexBuffer = std::make_unique<lve::LveBuffer>(
+		lveDevice,
+		indexSize,
+		indexCount,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	lveDevice.copyBuffer(stagingBuffer.getBuffer(), indexBuffer->getBuffer(), bufferSize);
 }
 
-void RenderSyncSystem::removeLightComponent(entt::entity entity)
+
+glm::mat4 TransformComponent::mat4()
 {
-	registry.remove<lve::PointLightData>(entity);
+	dirty = false;
+
+	glm::mat4 rotMat = glm::toMat4(quat); // convert quaternion to rotation matrix
+	glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), scale);
+	glm::mat4 transMat = glm::translate(glm::mat4(1.0f), translation);
+
+	return transMat * rotMat * scaleMat; // T * R * S
 }
 
 
-void RenderSyncSystem::syncToRenderBucket(VkDescriptorSet& descriptor, lve::LveBuffer& buffer)
+void TransformComponent::mat4(glm::mat4 &matrix)
 {
-	auto view = registry.view<DefaultObjectData>();
-	for (auto [entity, data] : view.each())
-	{
-		if (!data.dirty) return;
-		if (TransformComponent *transform = registry.try_get<TransformComponent>(currentEntity))
-			if (transform->dirty)
-				updateTransformRecursive(entity, transform->worldMatrix, true);
-
-		if (lve::PointLightData *light = registry.try_get<lve::PointLightData>(currentEntity))
-			if (light->dirty)
-			{
-				light->update();
-				light->updateDescriptorSet(device, descriptor);
-				light->updateBuffer(buffer);
-			}
-	}
-
-	dirtyLight.clear();
+	worldMatrix = matrix;
+	translation = LoaderObject::mat4ToPosition(matrix);
+	scale = LoaderObject::mat4ToScale(matrix);
+	quat = LoaderObject::mat4ToQuaternion(matrix, scale);
 }
 
-void RenderSyncSystem::updateAllTransforms()
+void TransformComponent::mat4(glm::mat4 matrix)
 {
-	auto view = registry.view<TransformComponent, DefaultObjectData>();
-
-	// Find root entities (no parent)
-	for (auto [entity, transform, meta]: view.each())
-		if (meta.parent == entt::null)
-			updateTransformRecursive(entity, glm::mat4(1.0f), true);
+	worldMatrix = matrix;
+	translation = LoaderObject::mat4ToPosition(matrix);
+	scale = LoaderObject::mat4ToScale(matrix);
+	quat = LoaderObject::mat4ToQuaternion(matrix, scale);
 }
 
-void RenderSyncSystem::updateTransformRecursive(entt::entity entity, const glm::mat4 &parentMatrix, bool parentDirty)
+glm::mat3 TransformComponent::normalMatrix()
 {
-	auto &transform = registry.get<TransformComponent>(entity);
-	auto& data = registry.get<DefaultObjectData>(entity);
+	glm::mat3 rotMat = glm::mat3(glm::toMat4(quat));
+	glm::mat3 invScaleMat = glm::mat3(
+		1.0f / scale.x, 0.0f, 0.0f,
+		0.0f, 1.0f / scale.y, 0.0f,
+		0.0f, 0.0f, 1.0f / scale.z
+	);
 
-	bool dirty = transform.dirty || parentDirty;
+	return glm::transpose(glm::inverse(rotMat * invScaleMat));
+}
 
-	if (dirty)
-	{
-		transform.worldMatrix = parentMatrix * transform.mat4();
-		transform.dirty = false;
+std::vector<VkVertexInputBindingDescription> RenderBucket::getBindingDescriptions()
+{
+	std::vector<VkVertexInputBindingDescription> bindingDescriptions(1);
+	bindingDescriptions[0].binding = 0;
+	bindingDescriptions[0].stride = sizeof(Vertex);
+	bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	return bindingDescriptions;
+}
 
-		if (auto *mesh = registry.try_get<MeshComponent>(entity)) {
-			renderBucket.get(data.handle)->model = transform.worldMatrix;
-			renderBucket.get(data.handle)->materialId = mesh->materialId;
-		}
-	}
+std::vector<VkVertexInputAttributeDescription> RenderBucket::getAttributeDescriptions()
+{
+	std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
 
-	// Update children
-	for (auto child : data.children) {
-		updateTransformRecursive(child, transform.worldMatrix, dirty);
-	}
+	attributeDescriptions.push_back({0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)});
+	attributeDescriptions.push_back({1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal)});
+	attributeDescriptions.push_back({2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv)});
+	attributeDescriptions.push_back({3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex, tangent)});
+	attributeDescriptions.push_back({4, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, bitangent)});
+
+	return attributeDescriptions;
+}
+
+std::vector<VkVertexInputBindingDescription> RenderBucket::getBindingDescriptionsShadow()
+{
+	std::vector<VkVertexInputBindingDescription> bindingDescriptions(1);
+	bindingDescriptions[0].binding = 0;
+	bindingDescriptions[0].stride = sizeof(Vertex);
+	bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	return bindingDescriptions;
+}
+
+std::vector<VkVertexInputAttributeDescription> RenderBucket::getAttributeDescriptionsShadow()
+{
+	std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
+
+	attributeDescriptions.push_back({0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)});
+	attributeDescriptions.push_back({1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal)});
+
+	return attributeDescriptions;
 }

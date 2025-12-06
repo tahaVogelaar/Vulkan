@@ -1,6 +1,6 @@
 #pragma once
-#include "lve_device.hpp"
-#include "lve_pipeline.hpp"
+#include "core/lve_device.hpp"
+#include "core/lve_pipeline.hpp"
 
 #include <memory>
 #include <unordered_map>
